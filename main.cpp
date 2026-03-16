@@ -67,10 +67,14 @@ int main(int argc, char** argv) {
         }
         RTPHeader rtp(recv_buf);
         J2KPayloadHeader j2kpayload(&recv_buf[rtp.get_header_length()]);
-        uint8_t* pkt_data = &recv_buf[rtp.get_header_length() + j2kpayload.get_header_length()];
+        uint8_t* pkt_data    = &recv_buf[rtp.get_header_length() + j2kpayload.get_header_length()];
+        size_t pkt_data_size = pkt_size - (rtp.get_header_length() + j2kpayload.get_header_length());
 
         uint32_t extended_sequence_number = (j2kpayload.get_ESEQ() << 16) | rtp.get_sequence_number();
-        assert(extended_sequence_number + 1 == pre_sequence);
+        assert((extended_sequence_number == pre_sequence + 1) || (pre_sequence == 0));
+        pre_sequence = extended_sequence_number;
+
+        std::cout << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl;
     }
 
     return 0;
