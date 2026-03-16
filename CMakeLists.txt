@@ -11,6 +11,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # sub directories
 add_subdirectory(./source)
 include_directories(./source)
+include_directories(/home/olab/Progs/Take_Library/)
 
 # build flags
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0 -g")
@@ -23,4 +24,4 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS} -O3 -g")
 add_executable(j2kpay main.cpp)
 target_link_libraries(j2kpay )
 
-add_executable(RTPsender RTPsender.cpp)
+# add_executable(RTPsender RTPsender.cpp)
