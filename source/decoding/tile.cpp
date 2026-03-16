@@ -204,7 +204,7 @@ pos2D Tile::get_min_precinct_size() const {
     return out;
 }
 
-void Tile::read(const MainHeader& mhd) {
+void Tile::read(const MainHeader& mhd, std::array<Precinct*, ConstValue::num_precinct>& table) {
     // for (uint16_t c = 0; c < number_of_component; ++c) {
     //     tile_component[c].set_resolution(&decoding_mem);
     // }
@@ -228,6 +228,8 @@ void Tile::read(const MainHeader& mhd) {
     }
     number_of_tilepart *= number_of_layer;
 
+    size_t table_index = 0;
+
     // Layer Resolution Component Precinct
     std::vector<std::vector<std::vector<std::vector<bool>>>> is_packet_read(number_of_layer);
     for (auto& e : is_packet_read) {
@@ -240,6 +242,11 @@ void Tile::read(const MainHeader& mhd) {
         }
     }
     tile_buf = tile_part[0].get_data_ptr();
+    // ここまでは Main Payload Header だけで実行可能．ここのtile_bufに入るポインタは後続の Body Payload Header から持ってくる必要がある
+    // また，HTJ2K_decoder_v2のコードではtile_bufに全ての画像データが続いていることを前提にしているため，要改良
+    // 実際にはthis->read_packet()でパケットを処理するまで使用しないため， Main Payload Header が確定して時点でテーブル化自体は可能
+    // テーブル化に precinct のポインタをパケット処理の順番で，配列として保存することで実現
+
     switch (progression_order) {
         case j2kmk::LRCP:
             break;
@@ -359,11 +366,13 @@ void Tile::read(const MainHeader& mhd) {
                                 if (true) {
                                     const uint32_t p                     = x_count[c][r] + y_count[c][r] * current_resolution_ptr->get_precinct_count().x;
                                     Precinct* const current_precinct_ptr = current_resolution_ptr->get_precinct_ptr(p);
-                                    for (uint16_t l = 0; l < number_of_layer; ++l) { // Layer
+                                    for (uint16_t l = 0; l < number_of_layer; ++l) { // Layer 今回は Layer は 1 固定
                                         if (!is_packet_read[l][r][c][p]) {
                                             is_packet_read[l][r][c][p] = true;
                                             // std::cout << "--- y: " << y << ", x: " << x << std::endl;
-                                            read_packet(current_precinct_ptr, l, current_resolution_ptr->get_number_of_subband(), r);
+                                            // read_packet(current_precinct_ptr, l, current_resolution_ptr->get_number_of_subband(), r); //  r はデバッグ用に渡す変数 したがって実際に必要になる変数は current_precinct_ptr のみ
+                                            // read_packet(current_precinct_ptr, 1, current_precinct_ptr->get_number_of_subband(), r);
+                                            table[table_index++]       = current_precinct_ptr;
                                         }
                                     }
                                     x_count[c][r] += 1;
@@ -386,7 +395,7 @@ void Tile::read(const MainHeader& mhd) {
     }
 }
 void Tile::read_packet(const Precinct* current_precinct, const uint16_t layer, const uint8_t num_subband, const uint8_t debug_resolution) {
-    if (!tile_buf.get_bit()) { // empty packet
+    if (!tile_buf.get_bit()) { // empty packet 今回は存在しない可能性あり
         std::cout << "empty packet" << std::endl;
         return;
     }
@@ -400,9 +409,23 @@ void Tile::read_packet(const Precinct* current_precinct, const uint16_t layer, c
 
     for (uint8_t i = 0; i < num_subband; ++i) {
         current_ps             = current_precinct->get_psubband_ptr(i);
-        uint32_t num_codeblock = current_ps->get_number_of_codeblock().pro();
+        uint32_t num_codeblock = current_ps->get_number_of_codeblock().pro(); // 必ず1
         for (uint32_t cindex = 0; cindex < num_codeblock; ++cindex) {
             current_ps->get_codeblock_ptr(cindex)->set_data(&tile_buf);
         }
+    }
+}
+
+void Tile::read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf) {
+    PrecinctSubband* current_ps;
+    for (uint8_t i = 0; i < current_precinct->get_number_of_subband(); ++i) {
+        current_ps = current_precinct->get_psubband_ptr(i);
+        current_ps->read_packet_header(&payload_buf);
+    }
+    payload_buf.check_FF();
+
+    for (uint8_t i = 0; i < current_precinct->get_number_of_subband(); ++i) {
+        current_ps = current_precinct->get_psubband_ptr(i);
+        current_ps->get_codeblock_ptr(0)->set_data(&payload_buf);
     }
 }
