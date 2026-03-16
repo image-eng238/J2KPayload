@@ -1,6 +1,7 @@
 #include <cassert>
 #include <iostream>
 #include <vector>
+#include <array>
 
 #include "decoding.hpp"
 #include "codestream.hpp"
@@ -241,7 +242,7 @@ void Tile::read(const MainHeader& mhd, std::array<Precinct*, ConstValue::num_pre
             }
         }
     }
-    tile_buf = tile_part[0].get_data_ptr();
+    // tile_buf = tile_part[0].get_data_ptr();
     // ここまでは Main Payload Header だけで実行可能．ここのtile_bufに入るポインタは後続の Body Payload Header から持ってくる必要がある
     // また，HTJ2K_decoder_v2のコードではtile_bufに全ての画像データが続いていることを前提にしているため，要改良
     // 実際にはthis->read_packet()でパケットを処理するまで使用しないため， Main Payload Header が確定して時点でテーブル化自体は可能
@@ -373,6 +374,7 @@ void Tile::read(const MainHeader& mhd, std::array<Precinct*, ConstValue::num_pre
                                             // read_packet(current_precinct_ptr, l, current_resolution_ptr->get_number_of_subband(), r); //  r はデバッグ用に渡す変数 したがって実際に必要になる変数は current_precinct_ptr のみ
                                             // read_packet(current_precinct_ptr, 1, current_precinct_ptr->get_number_of_subband(), r);
                                             table[table_index++]       = current_precinct_ptr;
+                                            assert(table_index < ConstValue::num_precinct);
                                         }
                                     }
                                     x_count[c][r] += 1;
