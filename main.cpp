@@ -71,10 +71,9 @@ int main(int argc, char** argv) {
         size_t pkt_data_size = pkt_size - (rtp.get_header_length() + j2kpayload.get_header_length());
 
         uint32_t extended_sequence_number = (j2kpayload.get_ESEQ() << 16) | rtp.get_sequence_number();
+        assert((std::cout << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl, true));
         assert((extended_sequence_number == pre_sequence + 1) || (pre_sequence == 0));
         pre_sequence = extended_sequence_number;
-
-        std::cout << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl;
     }
 
     return 0;
