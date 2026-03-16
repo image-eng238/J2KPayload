@@ -438,6 +438,7 @@ public:
     MainHeader() {}
     MainHeader(J2kBuf&);
     void read(J2kBuf&);
+    bool empty() { return !siz.operator bool(); }
     MultiMem::multi_ptr<SIZ> siz;
     MultiMem::multi_ptr<CAP> cap;
     MultiMem::multi_ptr<COD> cod;
