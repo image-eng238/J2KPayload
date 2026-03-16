@@ -311,6 +311,8 @@ void MainHeader::read(J2kBuf& in) {
                 if ((type >> 8) != 0xFF) {
                     return;
                 }
+                auto length = in.get_byte(2);
+                in.step(length - 2);
         }
     }
 }
