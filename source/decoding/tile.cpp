@@ -121,7 +121,7 @@ Tile_part::Tile_part(J2kBuf& in) {
     index                = in.get_byte();
     in.step(3);
     data = in.get_ptr();
-    in.step(length - header_size);
+    // in.step(length - header_size); // 複数のタイルパートの処理のために後続のタイルパートヘッダまでポインタを進める．このタイルパートに含まれるデータは Tile_part::data で処理
 }
 // TilePartHeader* Tile_part::get_header_ptr() const { return tile_part_header.get(); }
 uint8_t* Tile_part::get_data_ptr() const { return data; };
@@ -205,7 +205,7 @@ pos2D Tile::get_min_precinct_size() const {
     return out;
 }
 
-void Tile::read(const MainHeader& mhd, std::array<Precinct*, ConstValue::num_precinct>& table) {
+void Tile::read(const MainHeader& mhd, std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz>& table) {
     // for (uint16_t c = 0; c < number_of_component; ++c) {
     //     tile_component[c].set_resolution(&decoding_mem);
     // }
@@ -371,10 +371,8 @@ void Tile::read(const MainHeader& mhd, std::array<Precinct*, ConstValue::num_pre
                                         if (!is_packet_read[l][r][c][p]) {
                                             is_packet_read[l][r][c][p] = true;
                                             // std::cout << "--- y: " << y << ", x: " << x << std::endl;
-                                            // read_packet(current_precinct_ptr, l, current_resolution_ptr->get_number_of_subband(), r); //  r はデバッグ用に渡す変数 したがって実際に必要になる変数は current_precinct_ptr のみ
-                                            // read_packet(current_precinct_ptr, 1, current_precinct_ptr->get_number_of_subband(), r);
                                             table[table_index++]       = current_precinct_ptr;
-                                            assert(table_index < ConstValue::num_precinct);
+                                            assert(table_index <= ConstValue::num_precinct * ConstValue::Csiz);
                                         }
                                     }
                                     x_count[c][r] += 1;
@@ -395,6 +393,7 @@ void Tile::read(const MainHeader& mhd, std::array<Precinct*, ConstValue::num_pre
             std::cout << "unkown progression_order: " << progression_order << std::endl;
             return;
     }
+    return;
 }
 void Tile::read_packet(const Precinct* current_precinct, const uint16_t layer, const uint8_t num_subband, const uint8_t debug_resolution) {
     if (!tile_buf.get_bit()) { // empty packet 今回は存在しない可能性あり
@@ -419,6 +418,11 @@ void Tile::read_packet(const Precinct* current_precinct, const uint16_t layer, c
 }
 
 void Tile::read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf) {
+    if (!payload_buf.get_bit()) { // empty packet
+        std::cout << "empty packet" << std::endl;
+        return;
+    }
+
     PrecinctSubband* current_ps;
     for (uint8_t i = 0; i < current_precinct->get_number_of_subband(); ++i) {
         current_ps = current_precinct->get_psubband_ptr(i);

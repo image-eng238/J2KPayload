@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
 
     MainHeader main_header;
     Tile j2k_tile;
-    std::array<Precinct*, ConstValue::num_precinct> j2k_packet_table;
+    std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
 
     while (true) {
         uint8_t recv_buf[MAX_PACKET_SIZE] = {};

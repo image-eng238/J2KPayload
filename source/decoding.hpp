@@ -165,6 +165,7 @@ public:
 
     PrecinctSubband* get_psubband_ptr(const uint8_t) const;
     uint8_t get_number_of_subband() const { return number_of_subband; }
+    uint8_t get_resolution_level() const { return resolution_level; }
 
 private:
     /*16, 8*/
@@ -264,7 +265,7 @@ private:
 class Tile : public ReferenceGrid {
 public:
     void init(const MainHeader&, J2kBuf&);
-    void read(const MainHeader&, std::array<Precinct*, ConstValue::num_precinct>&);
+    void read(const MainHeader&, std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz>&);
     void read_packet(const Precinct*, const uint16_t, const uint8_t, const uint8_t = 0);
     void read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf);
     void setCOD(const COD&);
