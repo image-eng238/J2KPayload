@@ -20,6 +20,9 @@ uint8_t J2kBuf::get_bit() {
     const uint8_t out = *buf_ptr & bit_pos;
     if (bit_pos & 1) {
         bit_pos = 128;
+        if (*buf_ptr == 0xFF) { // bit stuffing
+            bit_pos >>= 1;
+        }
         buf_ptr++;
     } else {
         bit_pos >>= 1;
