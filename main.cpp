@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
 
         // decoder
         if (j2kpayload.get_MH() == 0) { // body packet
-            J2kBuf buf(pkt_data);
+            J2kBuf buf(pkt_data, pkt_data_size);
             for (auto& p : j2k_packet_table) {
                 j2k_tile.read_packet(p, buf);
                 ptrdiff_t diff = buf.get_ptr() - pkt_data;
@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
             }
 
         } else if (main_header.empty()) {
-            J2kBuf buf(pkt_data);
+            J2kBuf buf(pkt_data, pkt_data_size);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
             j2k_tile.read(main_header, j2k_packet_table);

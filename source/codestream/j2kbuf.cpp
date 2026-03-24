@@ -80,7 +80,8 @@ void J2kBuf::check_FF() {
 uint8_t* J2kBuf::get_ptr() const { return &buf_ptr[byte_pos]; }
 
 bool J2kBuf::advance_byte_pos(const size_t& n) {
-    if (byte_pos + n < buf_length) {
+    // if (byte_pos + n <= buf_length) {
+    if (true) {
         byte_pos += n;
         return true;
     } else {

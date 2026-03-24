@@ -60,6 +60,7 @@ class J2kBuf {
 public:
     J2kBuf() : buf_ptr{nullptr}, bit_pos{128}, byte_pos{0}, buf_length{0} {};
     J2kBuf(uint8_t* in) : buf_ptr{in}, bit_pos{128}, byte_pos{0}, buf_length{0} {};
+    J2kBuf(uint8_t* in, const size_t& length) : buf_ptr{in}, bit_pos{128}, byte_pos{0}, buf_length{length} {};
 
     void step(const int64_t& = 1);
     void r_fill();
