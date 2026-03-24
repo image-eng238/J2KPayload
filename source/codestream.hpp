@@ -58,8 +58,8 @@ using pos2D = Postion2D<>;
 
 class J2kBuf {
 public:
-    J2kBuf() : buf_ptr{nullptr}, bit_pos{128} {};
-    J2kBuf(uint8_t* in) : buf_ptr{in}, bit_pos{128} {};
+    J2kBuf() : buf_ptr{nullptr}, bit_pos{128}, byte_pos{0}, buf_length{0} {};
+    J2kBuf(uint8_t* in) : buf_ptr{in}, bit_pos{128}, byte_pos{0}, buf_length{0} {};
 
     void step(const int64_t& = 1);
     void r_fill();
@@ -77,8 +77,12 @@ public:
     uint8_t* get_ptr() const;
 
 private:
+    bool advance_byte_pos(const size_t&);
+
     uint8_t* buf_ptr;
+    size_t byte_pos;
     uint8_t bit_pos;
+    size_t buf_length;
 };
 
 // ceil(a / b);
