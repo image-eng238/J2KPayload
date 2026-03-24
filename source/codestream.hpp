@@ -80,10 +80,10 @@ public:
 private:
     bool advance_byte_pos(const size_t&);
 
-    uint8_t* buf_ptr;
     size_t byte_pos;
-    uint8_t bit_pos;
     size_t buf_length;
+    uint8_t* buf_ptr;
+    uint8_t bit_pos;
 };
 
 // ceil(a / b);

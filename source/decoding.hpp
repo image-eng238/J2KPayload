@@ -18,7 +18,8 @@ class Tile;
 // typedef MultiMem::static_memory<4194304> DecoMem;
 // typedef MultiMem::static_memory<1551040> DecoMem; // 使う量ピッタリ
 // typedef MultiMem::static_memory<1551016> DecoMem; // 使う量ピッタリ
-typedef MultiMem::static_memory<1551040 + 21640> DecoMem; // Tile が 0x18'0000 でキリがいい
+// typedef MultiMem::static_memory<1551040 + 21640 + 30000> DecoMem; // Tile が 0x18'0000 でキリがいい
+typedef MultiMem::static_memory<2000000> DecoMem; // Tile が 0x18'0000 でキリがいい
 // typedef MultiMem::static_memory<0x1C'0000> DecoMem; // 0x18'0000 でキリがいい
 
 class TagTree {
