@@ -24,4 +24,4 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS} -O3 -g")
 add_executable(j2kpay main.cpp)
 target_link_libraries(j2kpay CodeStream Decoding)
 
-# add_executable(RTPsender RTPsender.cpp)
+add_executable(RTPsender RTPsender.cpp)

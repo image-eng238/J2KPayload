@@ -1,38 +1,48 @@
-// およそ16msごとにパケットを送信
-
 #include "UDP.hpp"
 #include "RTP_file_format.hpp"
 
-#include <thread>
+#include <vector>
+#include <string>
+#include <string_view>
+#include <charconv>
 
-void send_task() {
-    const char* const FILE_PATH = "./data/2160p_5994fps_422_10bit.rtp";
-    UDPSender s;
-    RTPFile rtp(FILE_PATH);
-    uint8_t send_buf[BUFSIZ] = {};
-    while (true) {
-        auto send_size = rtp.get_packet(send_buf);
-        if (send_size == 0) {
-            exit(1);
+int main(int argc, char** argv) {
+
+    std::vector<std::string_view> arg_view(argc - 1);
+    for (size_t i = 1; i < argc; ++i) {
+        arg_view[i - 1] = argv[i];
+    }
+
+    std::string_view addr, rtp_path;
+    uint16_t port = 0;
+
+    for (auto it = arg_view.begin(); it != arg_view.end(); ++it) {
+        if (*it == "-a") {
+            it++;
+            addr = it->data();
         }
-        if (!s.send(send_buf, send_size)) {
-            break;
+        if (*it == "-p") {
+            it++;
+            if (std::from_chars(it->begin(), it->end(), port).ptr != it->end()) {
+                port = 0;
+            }
+        }
+        if (*it == "-r") {
+            it++;
+            rtp_path = it->data();
         }
     }
-    char end = 0;
-    s.send(&end, 1);
-}
 
-void clock_task(const size_t ck_ms) {}
+    RTPFile rtp(rtp_path.data());
+    UDPSender udp(addr.data(), port);
+    uint8_t send_buffer[1600] = {};
+    uint16_t send_pktsize     = 0;
 
-int main() {
-    const size_t send_clock = 16;
-
-    std::thread send_thread(send_task);
-    std::thread clock_thread(clock_task, send_clock);
-
-    send_thread.join();
-    clock_thread.join();
+    while (true) {
+        send_pktsize = rtp.get_packet(send_buffer);
+        if (send_pktsize == 0) break;
+        udp.send(send_buffer, send_pktsize);
+    }
 
     return 0;
 }

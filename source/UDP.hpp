@@ -35,6 +35,26 @@ protected:
 class UDPSender : public UDPBase {
 public:
     UDPSender() {}
+    UDPSender(const char* const address, const uint16_t port) {
+        if (!make_sock(address, port)) {
+            exit(1);
+        }
+    }
+    bool make_sock(const char* const address = "127.0.0.1", const uint16_t port = 50001) {
+        sock = socket(AF_INET, SOCK_DGRAM, 0);
+        if (sock == -1) {
+            std::cout << "socket error" << std::endl;
+            return false;
+        }
+        socket_address = [&]() {
+            sockaddr_in out{};
+            out.sin_family      = AF_INET;
+            out.sin_port        = htons(port);
+            out.sin_addr.s_addr = inet_addr(address);
+            return out;
+        }();
+        return true;
+    }
     bool send(const void* const buf_ptr, const size_t buf_size) {
         if (sendto(sock, buf_ptr, buf_size, 0, reinterpret_cast<const sockaddr*>(&socket_address), sizeof(sockaddr_in)) == -1) {
             std::cout << "send error" << std::endl;
