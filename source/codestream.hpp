@@ -78,7 +78,7 @@ public:
     uint8_t* get_ptr() const;
 
 private:
-    bool advance_byte_pos(const size_t&);
+    void advance_byte_pos(const size_t&);
 
     size_t byte_pos;
     size_t buf_length;

@@ -2,16 +2,12 @@
 #include <cassert>
 
 void J2kBuf::step(const int64_t& in) {
-    if (!advance_byte_pos(in)) {
-        assert(false);
-    }
+    advance_byte_pos(in);
 }
 void J2kBuf::r_fill() {
     if (!(bit_pos & 0x80)) {
         bit_pos = 128;
-        if (!advance_byte_pos(1)) {
-            assert(false);
-        }
+        advance_byte_pos(1);
     }
 }
 void J2kBuf::l_fill() {
@@ -30,9 +26,7 @@ uint8_t J2kBuf::get_bit() {
         if (buf_ptr[byte_pos] == 0xFF) { // bit stuffing
             bit_pos >>= 1;
         }
-        if (!advance_byte_pos(1)) {
-            assert(false);
-        }
+        advance_byte_pos(1);
     } else {
         bit_pos >>= 1;
     }
@@ -50,9 +44,7 @@ uint32_t J2kBuf::get_bit(const uint8_t& n) {
 uint8_t J2kBuf::get_byte() {
     bit_pos     = 128;
     uint8_t out = buf_ptr[byte_pos];
-    if (!advance_byte_pos(1)) {
-        assert(false);
-    }
+    advance_byte_pos(1);
     return out;
 }
 uint32_t J2kBuf::get_byte(const uint8_t& n) {
@@ -68,9 +60,7 @@ void J2kBuf::check_FF() {
     if (buf_ptr[byte_pos - 1] == 0xFF) {
         if (bit_pos & 1) {
             bit_pos = 128;
-            if (!advance_byte_pos(1)) {
-                assert(false);
-            }
+            advance_byte_pos(1);
         } else {
             bit_pos >>= 1;
         }
@@ -79,11 +69,10 @@ void J2kBuf::check_FF() {
 
 uint8_t* J2kBuf::get_ptr() const { return &buf_ptr[byte_pos]; }
 
-bool J2kBuf::advance_byte_pos(const size_t& n) {
+void J2kBuf::advance_byte_pos(const size_t& n) {
     if (byte_pos + n <= buf_length) {
         byte_pos += n;
-        return true;
     } else {
-        return false;
+        assert(false);
     }
 }

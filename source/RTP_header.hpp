@@ -17,7 +17,7 @@ public:
     uint16_t get_sequence_number() const { return pointer[2] << 8 | pointer[3]; };                                 // 16 bits
     uint32_t get_timestamp() const { return pointer[4] << 24 | pointer[5] << 16 | pointer[6] << 8 | pointer[7]; }; // 32 bits
     uint32_t get_SSRC() const { return pointer[8] << 24 | pointer[9] << 16 | pointer[10] << 8 | pointer[11]; };    // 32 bits
-    uint8_t get_header_length() const { return length; }
+    constexpr uint8_t get_header_length() const { return length; }
 
 private:
     const uint8_t* pointer;
@@ -33,7 +33,7 @@ public:
     uint8_t get_TP() const { return pointer[0] & 0x38; }                           // Image Type: 3 bits
     uint16_t get_PTSTAMP() const { return (pointer[1] & 0x0F) << 8 | pointer[2]; } // Precision Timestamp: 12 bits
     uint8_t get_ESEQ() const { return pointer[3]; }                                // Extended Sequence Number High-Order Bits: 8 bits
-    uint8_t get_header_length() const { return length; }
+    constexpr uint8_t get_header_length() const { return length; }
 
     // main
     uint8_t get_main_ORDH() const { return pointer[0] & 0x07; }  // Progression Order Flag, Main Packet: 3 bits
