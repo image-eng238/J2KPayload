@@ -6,7 +6,7 @@
 template <typename T, size_t Buffersize, size_t Numbuffer>
 class BufferPool {
 public:
-    T* get() {
+    [[nodiscard]] T* get() {
         for (size_t i = 0; i < Buffersize; ++i) {
             if (is_use[i] == false) {
                 is_use[i] = true;

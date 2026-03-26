@@ -2,11 +2,17 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <cassert>
+
+#include "UDP.hpp"
+#include "buffer_pool.hpp"
 
 class RTPHeader {
 public:
     RTPHeader() = default;
     RTPHeader(const uint8_t* const ptr) : pointer{ptr} {}
+
+    void set_ptr(const uint8_t* const ptr) { pointer = ptr; }
 
     uint8_t get_V() const { return pointer[0] & 0xC0; };                                                           // version: 2 bits 0b10で固定
     uint8_t get_P() const { return pointer[0] & 0x20; };                                                           // padding: 1 bit
@@ -28,6 +34,8 @@ class J2KPayloadHeader {
 public:
     J2KPayloadHeader() = default;
     J2KPayloadHeader(const uint8_t* const ptr) : pointer{ptr} {}
+
+    void set_ptr(const uint8_t* const ptr) { pointer = ptr; }
 
     uint8_t get_MH() const { return pointer[0] & 0xC0; }                           // Codestream Main Header Presence: 2 bits
     uint8_t get_TP() const { return pointer[0] & 0x38; }                           // Image Type: 3 bits
@@ -64,4 +72,62 @@ public:
 private:
     const uint8_t* pointer;
     static constexpr uint8_t length = 8;
+};
+
+class RTPReceiver {
+public:
+    RTPReceiver() : udp{}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{} {};
+    RTPReceiver(const char* const address, const uint16_t port)
+        : udp{address, port}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{} {}
+
+    RTPHeader& access_rtp() { return rtp_header; }
+    J2KPayloadHeader& access_payload() { return payload_header; }
+    uint8_t*& access_pkt_data_ptr() { return pkt_data_ptr; }
+    size_t& access_pkt_data_size() { return pkt_data_size; }
+
+    uint8_t* get_use_buf() const { return use_buf; }
+
+    bool sock_bind() { return udp.sock_bind(); }
+    bool sock_bind(const char* const address, const uint16_t port) { return udp.sock_bind(address, port); }
+
+    bool receive() {
+        uint8_t* tmp = use_buf;
+        use_buf      = recv_buf.get();
+        recv_buf.release(tmp);
+
+        auto pkt_size = udp.receive(use_buf, MAX_PACKET_SIZE);
+        if (pkt_size == -1) {
+            std::cout << "receive error, errno: " << errno << std::endl;
+            return false;
+        }
+
+        this->rtp_header.set_ptr(use_buf);
+        this->payload_header.set_ptr(use_buf + rtp_header.get_header_length());
+
+        pkt_data_ptr  = use_buf + rtp_header.get_header_length() + payload_header.get_header_length();
+        pkt_data_size = pkt_size - (rtp_header.get_header_length() + payload_header.get_header_length());
+
+        uint32_t extended_sequence_number = (payload_header.get_ESEQ() << 16) | rtp_header.get_sequence_number();
+        assert((std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl, true));
+        assert((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0));
+        pre_sequence_number = extended_sequence_number;
+
+        return true;
+    }
+
+private:
+    static constexpr size_t NUM_BUFFER      = 2;
+    static constexpr size_t MAX_PACKET_SIZE = 1384;
+
+    UDPReceiver udp;
+    RTPHeader rtp_header;
+    J2KPayloadHeader payload_header;
+
+    uint8_t* pkt_data_ptr;
+    size_t pkt_data_size;
+
+    uint32_t pre_sequence_number;
+
+    uint8_t* use_buf;
+    BufferPool<uint8_t, MAX_PACKET_SIZE, NUM_BUFFER> recv_buf;
 };

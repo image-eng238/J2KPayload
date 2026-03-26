@@ -53,36 +53,22 @@ int main(int argc, char** argv) {
         }
     }
 
-    UDPReceiver udprecv;
+    RTPReceiver rtp_recv;
     if (addr.empty() && port == 0) {
-        udprecv.sock_bind();
+        rtp_recv.sock_bind();
     } else {
-        udprecv.sock_bind(addr.data(), port);
+        rtp_recv.sock_bind(addr.data(), port);
     }
-
-    uint32_t pre_sequence = 0;
 
     MainHeader main_header;
     Tile j2k_tile;
     std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
 
     while (true) {
-        uint8_t recv_buf[MAX_PACKET_SIZE] = {};
-        // receive UDP packet
-        auto pkt_size                     = udprecv.receive(recv_buf, MAX_PACKET_SIZE);
-        if (pkt_size == -1) {
-            std::cout << "receive error, errno: " << errno << std::endl;
-            continue;
-        }
-        RTPHeader rtp(recv_buf);
-        J2KPayloadHeader j2kpayload(&recv_buf[rtp.get_header_length()]);
-        uint8_t* pkt_data    = &recv_buf[rtp.get_header_length() + j2kpayload.get_header_length()];
-        size_t pkt_data_size = pkt_size - (rtp.get_header_length() + j2kpayload.get_header_length());
-
-        uint32_t extended_sequence_number = (j2kpayload.get_ESEQ() << 16) | rtp.get_sequence_number();
-        assert((std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl, true));
-        assert((extended_sequence_number == pre_sequence + 1) || (pre_sequence == 0));
-        pre_sequence = extended_sequence_number;
+        rtp_recv.receive();
+        auto& j2kpayload    = rtp_recv.access_payload();
+        auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
+        auto& pkt_data_size = rtp_recv.access_pkt_data_size();
 
         // decoder
         if (j2kpayload.get_MH() == 0) { // body packet
