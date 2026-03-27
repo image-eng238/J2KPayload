@@ -98,7 +98,8 @@ public:
 
 private:
     /*16, 8*/
-    J2kBuf codeblock_data;
+    // J2kBuf codeblock_data;
+    uint8_t* codeblock_data;
 
     /*8, 4*/
     pos2D size;
@@ -119,6 +120,17 @@ private:
     bool is_set;
 
     // std::vector<uint32_t> path_length;
+
+    // this->length は RTP のパケットの最大サイズを超える可能性がある．
+    // また，ハードウェアデコーダへデータを渡してからのバッファ寿命が不明．
+    // そのため，一時的に class CodeBlock に static でバッファを持ち，
+    // RTPで受信した符号化データを保持させる．
+
+    static constexpr size_t NUM_BUFFER  = 5;
+    static constexpr size_t BUFFER_SIZE = 0xF00;
+
+    static inline uint8_t cbk_data_buffer[NUM_BUFFER][BUFFER_SIZE] = {};
+    static inline size_t buffer_pos                                = 0;
 };
 class PrecinctSubband : public ReferenceGrid {
 public:

@@ -108,7 +108,9 @@ public:
         pkt_data_size = pkt_size - (rtp_header.get_header_length() + payload_header.get_header_length());
 
         uint32_t extended_sequence_number = (payload_header.get_ESEQ() << 16) | rtp_header.get_sequence_number();
-        assert((std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl, true));
+#ifndef GENERATE_LOG
+        std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl;
+#endif
         assert((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0));
         pre_sequence_number = extended_sequence_number;
 

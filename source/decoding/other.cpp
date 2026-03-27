@@ -14,10 +14,13 @@ void CodeBlock::init(const pos2D& cb_pos0, const pos2D& cb_pos1, const pos2D& si
     // path_length.resize(layer);
 }
 void CodeBlock::set_data(J2kBuf* const buf) {
-    is_set         = true;
-    codeblock_data = *buf;
-    buf->r_fill();
-    buf->step(length);
+    is_set = true;
+    if (++CodeBlock::buffer_pos == CodeBlock::NUM_BUFFER) {
+        buffer_pos = 0;
+    }
+    codeblock_data = buf->make_packet_data(length, CodeBlock::cbk_data_buffer[buffer_pos]);
+    // buf->r_fill();
+    // buf->step(length);
 }
 
 void PrecinctSubband::init(const pos2D& ps_pos0, const pos2D& ps_pos1, const pos2D& csiz, const uint8_t csl, const uint8_t spos, DecoMem* decoding_mem) {

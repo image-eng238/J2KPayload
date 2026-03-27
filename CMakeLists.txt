@@ -8,6 +8,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # global defines
 
+add_definitions(-DGENERATE_LOG)
+
 # sub directories
 add_subdirectory(./source)
 include_directories(./source)

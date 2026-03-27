@@ -426,9 +426,14 @@ void Tile::read_packet(const Precinct* const current_precinct, J2kBuf& payload_b
     PrecinctSubband* current_ps;
     for (uint8_t i = 0; i < current_precinct->get_number_of_subband(); ++i) {
         current_ps = current_precinct->get_psubband_ptr(i);
+#ifdef GENERATE_LOG
+        current_ps->read_packet_header(&payload_buf, current_precinct->get_resolution_level());
+#else
         current_ps->read_packet_header(&payload_buf);
+#endif
     }
     payload_buf.check_FF();
+    // payload_buf.r_fill();
 
     for (uint8_t i = 0; i < current_precinct->get_number_of_subband(); ++i) {
         current_ps = current_precinct->get_psubband_ptr(i);

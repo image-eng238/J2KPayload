@@ -5,6 +5,8 @@
 #include "multi_memory.hpp"
 #include "const_value.hpp"
 
+#include "RTP_header.hpp"
+
 template <typename T = uint32_t>
 struct Postion2D {
     T x;
@@ -58,9 +60,11 @@ using pos2D = Postion2D<>;
 
 class J2kBuf {
 public:
-    J2kBuf() : buf_ptr{nullptr}, bit_pos{128}, byte_pos{0}, buf_length{0} {};
-    J2kBuf(uint8_t* in) : buf_ptr{in}, bit_pos{128}, byte_pos{0}, buf_length{0} {};
-    J2kBuf(uint8_t* in, const size_t& length) : buf_ptr{in}, bit_pos{128}, byte_pos{0}, buf_length{length} {};
+    J2kBuf() : buf_ptr{nullptr}, bit_pos{128}, byte_pos{0}, buf_length{0}, recv{} {};
+    J2kBuf(uint8_t* in) : buf_ptr{in}, bit_pos{128}, byte_pos{0}, buf_length{0}, recv{} {};
+    J2kBuf(uint8_t* in, const size_t& length) : buf_ptr{in}, bit_pos{128}, byte_pos{0}, buf_length{length}, recv{} {};
+    J2kBuf(uint8_t* in, const size_t& length, RTPReceiver* const& rptr)
+        : buf_ptr{in}, bit_pos{128}, byte_pos{0}, buf_length{length}, recv{rptr} {};
 
     void step(const int64_t& = 1);
     void r_fill();
@@ -77,10 +81,15 @@ public:
 
     uint8_t* get_ptr() const;
 
+    uint8_t* make_packet_data(const size_t&, uint8_t* const);
+
 private:
     void advance_byte_pos(const size_t&);
     void termination_check();
     void termination_check(const size_t&);
+    void receive();
+
+    RTPReceiver* recv;
 
     size_t byte_pos;
     size_t buf_length;
