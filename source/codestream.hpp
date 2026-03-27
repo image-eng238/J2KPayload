@@ -79,6 +79,8 @@ public:
 
 private:
     void advance_byte_pos(const size_t&);
+    void termination_check();
+    void termination_check(const size_t&);
 
     size_t byte_pos;
     size_t buf_length;
