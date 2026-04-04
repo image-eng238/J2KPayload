@@ -22,6 +22,16 @@ void CodeBlock::set_data(J2kBuf* const buf) {
     // buf->r_fill();
     // buf->step(length);
 }
+void CodeBlock::reuse() {
+    is_set         = false;
+    codeblock_data = nullptr;
+
+    length                  = 0;
+    number_of_coding_passes = 0;
+    number_of_zbp           = 0;
+    fast_skep_passes        = 0;
+    lblock                  = 0;
+}
 
 void PrecinctSubband::init(const pos2D& ps_pos0, const pos2D& ps_pos1, const pos2D& csiz, const uint8_t csl, const uint8_t spos, DecoMem* decoding_mem) {
     pos0                 = ps_pos0;
@@ -37,6 +47,10 @@ void PrecinctSubband::init(const pos2D& ps_pos0, const pos2D& ps_pos1, const pos
     codeblock->init(cbl_tl, cbl_br, cbl_size, csl, band_pos);
 };
 void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_resolution) {
+
+    static size_t call_count = 0;
+    ++call_count;
+
     uint16_t layer = 1;
     uint16_t cap   = 35;
 
@@ -101,6 +115,7 @@ void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_
 #endif
     } else {
 #if defined(GENERATE_LOG)
+        current_block->reuse();
         // std::cout << std::dec << ++call_count << ": " << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << ",0" << std::endl;
         std::cout << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << ",0" << std::endl;
 #endif

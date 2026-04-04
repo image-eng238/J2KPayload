@@ -95,6 +95,7 @@ public:
     CodeBlock();
     void init(const pos2D&, const pos2D&, const pos2D&, const uint8_t, const uint8_t);
     void set_data(J2kBuf* const);
+    void reuse();
 
 private:
     /*16, 8*/
