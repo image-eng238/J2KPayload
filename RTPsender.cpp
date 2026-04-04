@@ -19,9 +19,10 @@ int main(int argc, char** argv) {
     }
 
     std::string_view addr, rtp_path;
-    uint16_t port     = 0;
-    int64_t interval  = 0;
-    size_t skep_frame = 0;
+    uint16_t port          = 0;
+    int64_t interval       = 0;
+    size_t skep_frame      = 0;
+    int64_t allowable_time = 16;
 
     for (auto it = arg_view.begin(); it != arg_view.end(); ++it) {
         if (*it == "-a") {
@@ -50,6 +51,12 @@ int main(int argc, char** argv) {
                 skep_frame = 0;
             }
         }
+        if (*it == "-f") {
+            it++;
+            if (std::from_chars(it->begin(), it->end(), allowable_time).ptr != it->end()) {
+                allowable_time = 16;
+            }
+        }
     }
 
     RTPFile rtp(rtp_path.data());
@@ -59,19 +66,39 @@ int main(int argc, char** argv) {
 
     size_t now_frame = 0;
 
+    // while (true) {
+    //     send_pktsize = rtp.get_packet(send_buffer);
+    //     if (send_pktsize == 0) break;
+    //     RTPHeader r(send_buffer);
+    //     J2KPayloadHeader j(send_buffer + r.get_header_length());
+    //     if (j.get_MH() != 0) { // is main packet
+    //         ++now_frame;
+    //     }
+    //     if (now_frame <= skep_frame) {
+    //         continue;
+    //     }
+    //     udp.send(send_buffer, send_pktsize);
+    //     std::this_thread::sleep_for(std::chrono::milliseconds(interval));
+    // }
+
     while (true) {
+        auto p = std::chrono::system_clock::now() + std::chrono::milliseconds(allowable_time); // 1 ループに 16ms 以上で行うことで 60fps を再現
+
         send_pktsize = rtp.get_packet(send_buffer);
         if (send_pktsize == 0) break;
-        RTPHeader r(send_buffer);
-        J2KPayloadHeader j(send_buffer + r.get_header_length());
-        if (j.get_MH() != 0) { // is main packet
-            ++now_frame;
-        }
-        if (now_frame <= skep_frame) {
-            continue;
-        }
         udp.send(send_buffer, send_pktsize);
-        std::this_thread::sleep_for(std::chrono::milliseconds(interval));
+        now_frame++;
+
+        assert(J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_MH());
+        while (true) {
+            send_pktsize = rtp.get_packet(send_buffer);
+            udp.send(send_buffer, send_pktsize);
+            std::this_thread::sleep_for(std::chrono::milliseconds(interval));
+
+            if (RTPHeader(send_buffer).get_M()) break; // get_M() == true のとき EOF をパケットに含む
+        }
+
+        std::this_thread::sleep_until(p);
     }
 
     return 0;

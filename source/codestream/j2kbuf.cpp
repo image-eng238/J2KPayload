@@ -84,11 +84,13 @@ uint8_t* J2kBuf::make_packet_data(const size_t& len, uint8_t* const ptr) {
         byte_pos += len;
         return ptr;
     } else {
-        size_t cp1len = buf_length - byte_pos;
-        memcpy(ptr, get_ptr(), cp1len);
+        size_t cp1len         = buf_length - byte_pos;
+        size_t cp2len         = len - cp1len;
+        uint8_t* const cp1ptr = get_ptr();
         receive();
-        size_t cp2len = len - cp1len;
-        memcpy(ptr + cp1len, get_ptr(), cp2len);
+        uint8_t* const cp2ptr = get_ptr();
+        memcpy(ptr, cp1ptr, cp1len);
+        memcpy(ptr + cp1len, cp2ptr, cp2len);
         byte_pos += cp2len;
         return ptr;
     }
