@@ -11,6 +11,8 @@
 
 // ./build/bin/RTPsender -r ./data/2160p_5994fps_422_10bit.rtp -a 127.0.0.1 -p 50001 -s 1 -i 1
 
+// 2160p_5994fps_422_10bit.rtp パケット数は 163200 2秒分のサンプルなので 1フレーム当たりのパケット数は 1360
+
 int main(int argc, char** argv) {
 
     std::vector<std::string_view> arg_view(argc - 1);
@@ -66,6 +68,8 @@ int main(int argc, char** argv) {
 
     size_t now_frame = 0;
 
+    uint32_t pre_num = 0;
+
     // while (true) {
     //     send_pktsize = rtp.get_packet(send_buffer);
     //     if (send_pktsize == 0) break;
@@ -89,11 +93,25 @@ int main(int argc, char** argv) {
         udp.send(send_buffer, send_pktsize);
         now_frame++;
 
+        uint32_t num = (J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_ESEQ() << 16) | RTPHeader(send_buffer).get_sequence_number();
+        if (!((num == pre_num + 1) || (pre_num == 0))) {
+            std::cout << "assert false" << std::endl;
+            exit(1);
+        }
+        pre_num = num;
+
         assert(J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_MH());
         while (true) {
             send_pktsize = rtp.get_packet(send_buffer);
             udp.send(send_buffer, send_pktsize);
             std::this_thread::sleep_for(std::chrono::milliseconds(interval));
+
+            uint32_t num = (J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_ESEQ() << 16) | RTPHeader(send_buffer).get_sequence_number();
+            if (!((num == pre_num + 1) || (pre_num == 0))) {
+                std::cout << "assert false" << std::endl;
+                exit(1);
+            }
+            pre_num = num;
 
             if (RTPHeader(send_buffer).get_M()) break; // get_M() == true のとき EOF をパケットに含む
         }
