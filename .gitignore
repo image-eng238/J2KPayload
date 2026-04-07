@@ -2,3 +2,6 @@
 build/
 data/
 log/
+
+perf.data
+perf.data.old
