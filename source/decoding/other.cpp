@@ -114,8 +114,8 @@ void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_
         // std::cout << static_cast<uint32_t>(0) << "," << static_cast<uint32_t>(band_pos) << "," << current_block->length << std::endl;
 #endif
     } else {
-#if defined(GENERATE_LOG)
         current_block->reuse();
+#if defined(GENERATE_LOG)
         // std::cout << std::dec << ++call_count << ": " << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << ",0" << std::endl;
         std::cout << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << ",0" << std::endl;
 #endif
