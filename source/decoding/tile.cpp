@@ -418,8 +418,10 @@ void Tile::read_packet(const Precinct* current_precinct, const uint16_t layer, c
 }
 
 void Tile::read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf) {
+    static size_t call_count = 0;
+    call_count++;
     if (!payload_buf.get_bit()) { // empty packet
-        std::cout << "empty packet" << std::endl;
+        std::cout << "empty packet, call_count: " << call_count << std::endl;
         exit(1);
         return;
     }

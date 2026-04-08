@@ -116,6 +116,10 @@ int main(int argc, char** argv) {
             if (RTPHeader(send_buffer).get_M()) break; // get_M() == true のとき EOF をパケットに含む
         }
 
+        if (now_frame % 10 == 0) {
+            printf("frame: %ld\n", now_frame);
+        }
+
         std::this_thread::sleep_until(p);
     }
 

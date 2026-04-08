@@ -86,6 +86,7 @@ public:
     size_t& access_pkt_data_size() { return pkt_data_size; }
 
     uint8_t* get_use_buf() const { return use_buf; }
+    uint32_t get_extended_sequence_number() const { return (payload_header.get_ESEQ() << 16) | rtp_header.get_sequence_number(); }
 
     bool sock_bind() { return udp.sock_bind(); }
     bool sock_bind(const char* const address, const uint16_t port) { return udp.sock_bind(address, port); }
@@ -107,7 +108,7 @@ public:
         pkt_data_ptr  = use_buf + rtp_header.get_header_length() + payload_header.get_header_length();
         pkt_data_size = pkt_size - (rtp_header.get_header_length() + payload_header.get_header_length());
 
-        uint32_t extended_sequence_number = (payload_header.get_ESEQ() << 16) | rtp_header.get_sequence_number();
+        uint32_t extended_sequence_number = get_extended_sequence_number();
 #ifndef GENERATE_LOG
         // std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl;
 #endif
