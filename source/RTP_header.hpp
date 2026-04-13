@@ -6,6 +6,7 @@
 
 #include "UDP.hpp"
 #include "buffer_pool.hpp"
+#include "leaky_bucket_buf.hpp"
 
 class RTPHeader {
 public:
@@ -23,7 +24,7 @@ public:
     uint16_t get_sequence_number() const { return pointer[2] << 8 | pointer[3]; };                                 // 16 bits
     uint32_t get_timestamp() const { return pointer[4] << 24 | pointer[5] << 16 | pointer[6] << 8 | pointer[7]; }; // 32 bits
     uint32_t get_SSRC() const { return pointer[8] << 24 | pointer[9] << 16 | pointer[10] << 8 | pointer[11]; };    // 32 bits
-    constexpr uint8_t get_header_length() const { return length; }
+    static constexpr uint8_t get_header_length() { return length; }
 
 private:
     const uint8_t* pointer;
@@ -41,7 +42,7 @@ public:
     uint8_t get_TP() const { return pointer[0] & 0x38; }                           // Image Type: 3 bits
     uint16_t get_PTSTAMP() const { return (pointer[1] & 0x0F) << 8 | pointer[2]; } // Precision Timestamp: 12 bits
     uint8_t get_ESEQ() const { return pointer[3]; }                                // Extended Sequence Number High-Order Bits: 8 bits
-    constexpr uint8_t get_header_length() const { return length; }
+    static constexpr uint8_t get_header_length() { return length; }
 
     // main
     uint8_t get_main_ORDH() const { return pointer[0] & 0x07; }  // Progression Order Flag, Main Packet: 3 bits
@@ -76,14 +77,15 @@ private:
 
 class RTPReceiver {
 public:
-    RTPReceiver() : udp{}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{} {};
+    RTPReceiver() : udp{}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{}, recv_buf{&udp} {};
     RTPReceiver(const char* const address, const uint16_t port)
-        : udp{address, port}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{} {}
+        : udp{address, port}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{}, recv_buf{&udp} {}
 
     RTPHeader& access_rtp() { return rtp_header; }
     J2KPayloadHeader& access_payload() { return payload_header; }
     uint8_t*& access_pkt_data_ptr() { return pkt_data_ptr; }
     size_t& access_pkt_data_size() { return pkt_data_size; }
+    leaky_bucket_buf& access_recv_buf() { return recv_buf; }
 
     uint8_t* get_use_buf() const { return use_buf; }
     uint32_t get_extended_sequence_number() const { return (payload_header.get_ESEQ() << 16) | rtp_header.get_sequence_number(); }
@@ -92,11 +94,8 @@ public:
     bool sock_bind(const char* const address, const uint16_t port) { return udp.sock_bind(address, port); }
 
     bool receive() {
-        uint8_t* tmp = use_buf;
-        use_buf      = recv_buf.get();
-        recv_buf.release(tmp);
 
-        auto pkt_size = udp.receive(use_buf, MAX_PACKET_SIZE);
+        auto pkt_size = recv_buf.pop(use_buf);
         if (pkt_size == -1) {
             std::cout << "receive error, errno: " << errno << std::endl;
             return false;
@@ -132,5 +131,6 @@ private:
     uint32_t pre_sequence_number;
 
     uint8_t* use_buf;
-    BufferPool<uint8_t, MAX_PACKET_SIZE, NUM_BUFFER> recv_buf;
+    // BufferPool<uint8_t, MAX_PACKET_SIZE, NUM_BUFFER> recv_buf;
+    leaky_bucket_buf recv_buf;
 };
