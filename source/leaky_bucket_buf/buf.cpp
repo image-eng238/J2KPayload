@@ -23,7 +23,7 @@ void leaky_bucket_buf::receive() {
     assert(ast); // ここでプログラムが停止する場合，データの排出が追い付いてない
 
     assert(writing->empty());
-    writing->data_size = static_cast<size_t>(udp->receive(writing->data, BUFFER_SIZE));
+    writing->data_size.store(static_cast<size_t>(udp->receive(writing->data, BUFFER_SIZE)), std::memory_order_release);
 
     next_write = writing->next_ptr;
 
@@ -36,7 +36,7 @@ void leaky_bucket_buf::write(const uint8_t* const src, const size_t& len) {
     auto ast      = writing->empty();
     assert(ast); // ここでプログラムが停止する場合，データの排出が追い付いてない
     memcpy(writing->data, src, len);
-    writing->data_size = len;
+    writing->data_size.store(len, std::memory_order_release);
 
     next_write = writing->next_ptr;
 }
@@ -44,8 +44,8 @@ void leaky_bucket_buf::write(const uint8_t* const src, const size_t& len) {
 uint8_t* leaky_bucket_buf::pop() {
     // assert(!next_pop->empty());
     while (next_pop->empty()); // データの排出が入力より速いため，データが入力されるまで待機
-    auto popping       = next_pop;
-    popping->data_size = 0;
+    auto popping = next_pop;
+    popping->data_size.store(0, std::memory_order_release);
 
     next_pop = popping->next_ptr;
     return popping->data;
@@ -55,7 +55,7 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     // assert(!next_pop->empty());
     while (next_pop->empty()); // データの排出が入力より速いため，データが入力されるまで待機 -O3ビルド時に消されている可能性あり．
     auto popping       = next_pop;
-    auto out           = popping->data_size;
+    auto out           = popping->data_size.load(std::memory_order_acquire);
     ptr                = popping->data;
     popping->data_size = 0;
 

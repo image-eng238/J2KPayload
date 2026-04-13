@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstddef>
 
+#include <atomic>
+
 class leaky_bucket_buf {
 public:
     static constexpr size_t BUFFER_SIZE = 1500;
@@ -21,11 +23,10 @@ public:
 
 private:
     struct link_list {
-        link_list() : data_size{} {}
         link_list* next_ptr;
-        int data_size;
+        std::atomic_int data_size;
         uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
-        bool empty() const { return data_size == 0; }
+        bool empty() const { return data_size.load(std::memory_order_acquire) == 0; }
     };
     link_list* next_write;
     link_list* next_pop;
