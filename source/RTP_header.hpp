@@ -77,9 +77,9 @@ private:
 
 class RTPReceiver {
 public:
-    RTPReceiver() : udp{}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{}, recv_buf{&udp} {};
+    RTPReceiver() : udp{}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{}, recv_buf(&udp) {};
     RTPReceiver(const char* const address, const uint16_t port)
-        : udp{address, port}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{}, recv_buf{&udp} {}
+        : udp{address, port}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{}, recv_buf(&udp) {}
 
     RTPHeader& access_rtp() { return rtp_header; }
     J2KPayloadHeader& access_payload() { return payload_header; }
@@ -109,7 +109,7 @@ public:
 
         uint32_t extended_sequence_number = get_extended_sequence_number();
 #ifndef GENERATE_LOG
-        // std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl;
+        std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl;
 #endif
         assert((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0));
         pre_sequence_number = extended_sequence_number;

@@ -3,13 +3,13 @@
 #include <cstring>
 #include <cassert>
 
-constexpr leaky_bucket_buf::leaky_bucket_buf() : buf_list{}, next_write{buf_list}, next_pop{buf_list}, udp{} {
+leaky_bucket_buf::leaky_bucket_buf() : buf_list{}, next_write{buf_list}, next_pop{buf_list}, udp{} {
     for (size_t i = 0; i < NUM_BUFFER - 1; ++i) {
         buf_list[i].next_ptr = &buf_list[i + 1];
     }
     buf_list[NUM_BUFFER - 1].next_ptr = buf_list;
 }
-constexpr leaky_bucket_buf::leaky_bucket_buf(UDPReceiver* const ptr) : leaky_bucket_buf{} {
+leaky_bucket_buf::leaky_bucket_buf(UDPReceiver* const ptr) : leaky_bucket_buf{} {
     set_udp(ptr);
 }
 
@@ -54,6 +54,7 @@ uint8_t* leaky_bucket_buf::pop() {
 int leaky_bucket_buf::pop(uint8_t*& ptr) {
     // assert(!next_pop->empty());
     while (next_pop->empty()); // データの排出が入力より速いため，データが入力されるまで待機
+    std::cout << next_pop->empty() << std::endl;
     auto popping       = next_pop;
     auto out           = popping->data_size;
     ptr                = popping->data;

@@ -7,11 +7,11 @@
 
 class leaky_bucket_buf {
 public:
-    static constexpr size_t BUFFER_SIZE = 16;
-    static constexpr size_t NUM_BUFFER  = 5;
+    static constexpr size_t BUFFER_SIZE = 1500;
+    static constexpr size_t NUM_BUFFER  = 1500;
 
-    constexpr leaky_bucket_buf();
-    constexpr leaky_bucket_buf(UDPReceiver* const);
+    leaky_bucket_buf();
+    leaky_bucket_buf(UDPReceiver* const);
 
     constexpr void set_udp(UDPReceiver* const);
     void receive();
@@ -21,6 +21,7 @@ public:
 
 private:
     struct link_list {
+        link_list() : data_size{} {}
         link_list* next_ptr;
         int data_size;
         uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
