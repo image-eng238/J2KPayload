@@ -53,8 +53,7 @@ uint8_t* leaky_bucket_buf::pop() {
 
 int leaky_bucket_buf::pop(uint8_t*& ptr) {
     // assert(!next_pop->empty());
-    while (next_pop->empty()); // データの排出が入力より速いため，データが入力されるまで待機
-    std::cout << next_pop->empty() << std::endl;
+    while (next_pop->empty()); // データの排出が入力より速いため，データが入力されるまで待機 -O3ビルド時に消されている可能性あり．
     auto popping       = next_pop;
     auto out           = popping->data_size;
     ptr                = popping->data;

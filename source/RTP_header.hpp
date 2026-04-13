@@ -109,7 +109,7 @@ public:
 
         uint32_t extended_sequence_number = get_extended_sequence_number();
 #ifndef GENERATE_LOG
-        std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl;
+        // std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl;
 #endif
         assert((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0));
         pre_sequence_number = extended_sequence_number;
