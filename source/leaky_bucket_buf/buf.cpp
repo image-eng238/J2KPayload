@@ -66,9 +66,22 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     // assert(!next_pop->empty());
     // while (next_pop->empty()); // データの排出が入力より速いため，データが入力されるまで待機
     std::unique_lock lk(mtx);
-    can_pop.wait(lk, [this] {
-        return current_num_data != 0;
-    });
+    static bool is_called = false;
+    // if (is_called) {
+    //     const int64_t timeout_ms = 100;
+    //     auto result              = can_pop.wait_for(lk, std::chrono::milliseconds(timeout_ms), [this] {
+    //         return current_num_data != 0;
+    //     });
+    //     if (result == static_cast<bool>(std::cv_status::timeout)) {
+    //         std::cout << "can_pop.wait_for(" << timeout_ms << "ms): timeout" << std::endl;
+    //         exit(1);
+    //     }
+    // } else {
+        can_pop.wait(lk, [this] {
+            return current_num_data != 0;
+        });
+    //     is_called = true;
+    // }
 
     auto popping       = next_pop;
     auto out           = popping->data_size;

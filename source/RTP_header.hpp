@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cstddef>
 #include <cassert>
+#include <cstdio>
+#define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
 
 #include "UDP.hpp"
 #include "buffer_pool.hpp"
@@ -111,7 +113,8 @@ public:
 #ifndef GENERATE_LOG
         // std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl;
 #endif
-        assert((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0));
+        // assert((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0));
+        PRINT_ASSERTION((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0), "extended_sequence_number: %d ,pre_sequence_number: %d, diff: %d\n", extended_sequence_number, pre_sequence_number, extended_sequence_number - pre_sequence_number);
         pre_sequence_number = extended_sequence_number;
 
         return true;

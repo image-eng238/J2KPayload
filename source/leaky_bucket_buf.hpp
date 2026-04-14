@@ -11,7 +11,7 @@ class leaky_bucket_buf {
 
 public:
     static constexpr size_t BUFFER_SIZE = 1500;
-    static constexpr size_t NUM_BUFFER  = 1500;
+    static constexpr size_t NUM_BUFFER  = 2000;
 
     leaky_bucket_buf();
     leaky_bucket_buf(UDPReceiver* const);
