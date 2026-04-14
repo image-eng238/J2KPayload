@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
         }
     } });
 
-    auto r = rtp_recv.access_recv_buf();
+    auto& r = rtp_recv.access_recv_buf();
     std::thread produser([&r]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(3));
         while (true) r.receive();

@@ -5,6 +5,9 @@
 #include <cstdint>
 #include <cstddef>
 
+#include <mutex>
+#include <condition_variable>
+
 class leaky_bucket_buf {
 public:
     static constexpr size_t BUFFER_SIZE = 1500;
@@ -21,7 +24,6 @@ public:
 
 private:
     struct link_list {
-        link_list() : data_size{} {}
         link_list* next_ptr;
         int data_size;
         uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
@@ -30,6 +32,11 @@ private:
     link_list* next_write;
     link_list* next_pop;
     UDPReceiver* udp;
+
+    std::mutex mtx;
+    std::condition_variable can_pop;
+    std::condition_variable can_receive;
+    size_t current_num_data;
 
     link_list buf_list[NUM_BUFFER];
 };
