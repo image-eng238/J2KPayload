@@ -22,24 +22,30 @@ constexpr void leaky_bucket_buf::set_udp(UDPReceiver* const ptr) {
 }
 
 void leaky_bucket_buf::receive() {
+    uint8_t tmp_buf[BUFFER_SIZE];
+    int tmp_data_size = udp->receive(tmp_buf, BUFFER_SIZE);
 
-    std::unique_lock lk(mtx);
-    can_receive.wait(lk, [this] {
+    {
+        std::unique_lock lk(mtx);
+        // can_receive.wait(lk, [this] {
+        //     return current_num_data < NUM_BUFFER;
+        // });
         assert(current_num_data < NUM_BUFFER);
-        return current_num_data < NUM_BUFFER;
-    });
 
-    auto& writing = next_write;
-    assert(writing->empty());
-    writing->data_size = udp->receive(writing->data, BUFFER_SIZE);
+        auto& writing = next_write;
+        assert(writing->empty());
+        // writing->data_size = udp->receive(writing->data, BUFFER_SIZE);
+        memcpy(writing->data, tmp_buf, tmp_data_size);
+        writing->data_size = tmp_data_size;
 
-    next_write = writing->next_ptr;
+        next_write = writing->next_ptr;
 
-    // ここで writing と next_ptr の順序を確認し，ソートする．
-    // RTP の場合はシーケンス番号をチェックしてソート．
+        // ここで writing と next_ptr の順序を確認し，ソートする．
+        // RTP の場合はシーケンス番号をチェックしてソート．
 
-    ++current_num_data;
-    can_pop.notify_all();
+        ++current_num_data;
+        can_pop.notify_all();
+    }
 }
 
 void leaky_bucket_buf::write(const uint8_t* const src, const size_t& len) {
@@ -66,22 +72,31 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     // assert(!next_pop->empty());
     // while (next_pop->empty()); // データの排出が入力より速いため，データが入力されるまで待機
     std::unique_lock lk(mtx);
-    static bool is_called = false;
-    // if (is_called) {
-    //     const int64_t timeout_ms = 100;
-    //     auto result              = can_pop.wait_for(lk, std::chrono::milliseconds(timeout_ms), [this] {
-    //         return current_num_data != 0;
-    //     });
-    //     if (result == static_cast<bool>(std::cv_status::timeout)) {
-    //         std::cout << "can_pop.wait_for(" << timeout_ms << "ms): timeout" << std::endl;
-    //         exit(1);
-    //     }
-    // } else {
+
+    const bool USE_TIME_OUT = false;
+
+    if constexpr (USE_TIME_OUT) {
+        static bool is_called = false;
+        if (is_called) {
+            const int64_t timeout_ms = 100;
+            auto result              = can_pop.wait_for(lk, std::chrono::milliseconds(timeout_ms), [this] {
+                return current_num_data != 0;
+            });
+            if (result == static_cast<bool>(std::cv_status::timeout)) {
+                std::cout << "can_pop.wait_for(" << timeout_ms << "ms): timeout" << std::endl;
+                exit(1);
+            }
+        } else {
+            can_pop.wait(lk, [this] {
+                return current_num_data != 0;
+            });
+            is_called = true;
+        }
+    } else {
         can_pop.wait(lk, [this] {
             return current_num_data != 0;
         });
-    //     is_called = true;
-    // }
+    }
 
     auto popping       = next_pop;
     auto out           = popping->data_size;
