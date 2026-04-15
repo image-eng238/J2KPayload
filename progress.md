@@ -3,6 +3,7 @@
 ## 2026/04/07
 
 パケットの受信処理を行うスレッドを**受信スレッド**， パケットの解析処理を行うスレッドを**解析スレッド**と呼ぶことにする．
+学士の卒業研究で作成した HTJ2K パケット用のパケット解析を行うプログラムを単に**パケット解析器**と呼ぶ．
 
 ### プログラム 
 HTJ2K パケットを解析するプログラムを作成．  
@@ -131,7 +132,48 @@ mutex の所有権を手放さないということになる．
 改善後は， socket2.h/recv 関数の呼び出しにテンポラリ用のバッファを用いて，
 mutex のロック後に解析スレッドと共有するバッファに**コピー(std::memcpy)** を行うように変更した．  
 この変更によって，**マシンパワーがある場合に限っては** 60fps の解析が可能となった．
-しかし，1つの RTP パケット毎に最大 1384 byte のコピーが発生するのは無視できないボトルネックになってしまった．
+しかし，1つの RTP パケット毎に最大 1384 byte のコピーが発生するのは無視できないボトルネックになる可能性がある．
+
+perf を用いた計測(表1)では J2kBuf::get_bit(const uint8_t&) 関数に約 15% ， J2kBuf::get_bit() 関数に約 12% ほどの オーバヘッドが発生していることもわかった．
+また カーネル処理の _copy_to_iter 関数が約 5% ほどのオーバーヘッドを示した．
+
+#### 表1 perf report から一部抜粋 
+|Overhead|Command|Shared Object|Symbol|
+|---|---|---|---|
+|14.95%|j2kpay|j2kpay[.]|J2kBuf::get_bit(unsigned char const&)|
+|11.75%|j2kpay|j2kpay[.]|J2kBuf::get_bit()|
+|5.48%|j2kpay|[kernel.kallsyms][k]| _copy_to_iter|
+|5.42%|j2kpay|j2kpay[.]|PrecinctSubband::read_packet_header(J2kBuf*, unsigned char)|
+|3.70%|j2kpay|j2kpay[.]|leaky_bucket_buf::pop(unsigned char*&)|
+
+### 考察
+
+perf report の結果から，まずは J2kBuf::get_bit 関数の処理を改善するはスループットの向上に必須であることがわかる．
+解析スレッドの処理は基本的には，パケット解析器のソースコードを用いている．
+しかし，J2kBuf::get_bit 関数(J2kBuf::get_byte関数も同様)では，
+RTP パケットに分割された HTJ2K パケットを解析処理するために，終端時にバッファを更新する機能やそれに伴う終端チェックなどで処理時間が増加している可能性がある．
+(バッファ更新が実際に J2kBuf::get_bit() 関数に含まれ計測されているかは，未検証)
+
+#### 表2 perf report から j2kpay の抜粋
+
+|Overhead|Comman|Symbol|
+|---|---|---|
+|14.95%|j2kpay[.]|J2kBuf::get_bit(unsignedcharconst&)
+|11.75%|j2kpay[.]|J2kBuf::get_bit()
+|5.42%|j2kpay[.]|PrecinctSubband::read_packet_header(J2kBuf*,unsignedchar)
+|3.70%|j2kpay[.]|leaky_bucket_buf::pop(unsignedchar*&)
+|1.87%|j2kpay[.]|Tile::read_packet(Precinctconst*,J2kBuf&)
+|1.28%|j2kpay[.]|J2kBuf::make_packet_data(unsignedlongconst&,unsignedchar*)
+|1.04%|j2kpay[.]|leaky_bucket_buf::receive()
+|1.03%|j2kpay[.]|PrecinctSubband::init(Postion2D<unsignedint>const&,Postion2D<unsignedint>const&,Postion2D<unsignedint>const&,unsignedchar,unsignedchar,MultiMem::static_memory<2000000ul>*)
+|0.89%|j2kpay[.]|Resolution::set_precinct(Postion2D<unsignedint>const&,Postion2D<unsignedint>const&,unsignedchar,MultiMem::static_memory<2000000ul>*)
+|0.79%|j2kpay[.]|Tile::read(MainHeaderconst&,std::array<Precinct*,5670ul>&)
+|0.76%|j2kpay[.]|CodeBlock::set_data(J2kBuf*)
+|0.75%|j2kpay[.]|Resolution::empty()const
+|0.70%|j2kpay[.]|Component::ceil_N_L(unsignedchar&,unsignedchar&)const[clone.part.0]
+|0.60%|j2kpay[.]|Precinct::init(Subbandconst*,unsignedchar,Postion2D<unsignedint>const&,Postion2D<unsignedint>const&,Postion2D<unsignedint>const&,unsignedint,unsignedchar,unsignedchar,MultiMem::static_memory<2000000ul>*)
+|0.55%|j2kpay[.]|Precinct::get_psubband_ptr(unsignedchar)const
+|0.25%|j2kpay[.]|main::{lambda()#1}::operator()()const
 
 # メモ
 

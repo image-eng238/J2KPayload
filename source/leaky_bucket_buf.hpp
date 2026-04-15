@@ -10,8 +10,8 @@
 class leaky_bucket_buf {
 
 public:
-    static constexpr size_t BUFFER_SIZE = 1500;
-    static constexpr size_t NUM_BUFFER  = 2000;
+    static constexpr size_t BUFFER_SIZE = 1384;
+    static constexpr size_t NUM_BUFFER  = 1000;
 
     leaky_bucket_buf();
     leaky_bucket_buf(UDPReceiver* const);
@@ -27,6 +27,7 @@ private:
         link_list* next_ptr;
         int data_size;
         uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
+        // uint8_t* data;
         bool empty() const { return data_size == 0; }
     };
     link_list* next_write;
@@ -39,4 +40,6 @@ private:
     size_t current_num_data;
 
     link_list buf_list[NUM_BUFFER];
+    // uint8_t buffer[BUFFER_SIZE * NUM_BUFFER];
+    // 体感では link_list のメンバに配列をもたせたほうが NUM_BUFFER が小さい値でも安定する(要検証)
 };

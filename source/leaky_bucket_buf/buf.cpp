@@ -10,8 +10,10 @@ leaky_bucket_buf::leaky_bucket_buf()
 
     for (size_t i = 0; i < NUM_BUFFER - 1; ++i) {
         buf_list[i].next_ptr = &buf_list[i + 1];
+        // buf_list[i].data     = &buffer[i * BUFFER_SIZE];
     }
     buf_list[NUM_BUFFER - 1].next_ptr = buf_list;
+    // buf_list[NUM_BUFFER - 1].data     = &buffer[(NUM_BUFFER - 1) * BUFFER_SIZE];
 }
 leaky_bucket_buf::leaky_bucket_buf(UDPReceiver* const ptr) : leaky_bucket_buf{} {
     set_udp(ptr);
