@@ -70,7 +70,7 @@ public:
     uint8_t get_body_ESEQ() const { return get_ESEQ(); }        // Extended Sequence Number High-Order Bits: 8 bits
 
     uint16_t get_body_POS() const { return (pointer[4] << 4) | ((pointer[5] & 0xF0) >> 4); }         // Resyns Point Offset: 12 bits
-    uint32_t get_body_PID() const { return pointer[5] & 0x0F << 16 | pointer[6] << 8 | pointer[7]; } // Precinct Identifier: 20 bits
+    uint32_t get_body_PID() const { return (pointer[5] & 0x0F << 16) | (pointer[6] << 8) | (pointer[7]); } // Precinct Identifier: 20 bits
 
 private:
     const uint8_t* pointer;

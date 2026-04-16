@@ -24,18 +24,24 @@ void J2kBuf::reset(uint8_t* const in) {
 }
 
 uint8_t J2kBuf::get_bit() {
-    if (bit_pos & 0x80) termination_check();
-    const uint8_t out = buf_ptr[byte_pos] & bit_pos;
-    if (bit_pos & 1) {
-        bit_pos = 0x80;
-        if (buf_ptr[byte_pos] == 0xFF) { // bit stuffing
+    if (bit_pos & 0x80) {
+        termination_check();
+        bit_purge = buf_ptr[byte_pos];
+    }
+    // const uint8_t out = buf_ptr[byte_pos] & bit_pos;
+    const uint8_t out = bit_purge & bit_pos;
+    if (bit_pos & static_cast<uint8_t>(0x01)) {
+        bit_pos = static_cast<uint8_t>(0x80);
+        // if (buf_ptr[byte_pos] == 0xFF) { // bit stuffing
+        if (bit_purge == 0xFF) { // bit stuffing
             bit_pos >>= 1;
         }
         advance_byte_pos(1);
     } else {
         bit_pos >>= 1;
     }
-    return (out) ? 1 : 0;
+    // return (out) ? 1 : 0;
+    return static_cast<uint8_t>(static_cast<bool>(out));
 }
 uint32_t J2kBuf::get_bit(const uint8_t& n) {
     assert(n <= 32);

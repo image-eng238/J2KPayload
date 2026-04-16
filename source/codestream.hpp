@@ -95,6 +95,7 @@ private:
     size_t buf_length;
     uint8_t* buf_ptr;
     uint8_t bit_pos;
+    uint8_t bit_purge;
 };
 
 // ceil(a / b);

@@ -36,13 +36,14 @@ constexpr size_t MAX_PACKET_SIZE = 1384;
 
 int main(int argc, char** argv) {
     std::vector<std::string_view> arg_view(argc - 1);
-    for (size_t i = 1; i < argc; ++i) {
+    for (int i = 1; i < argc; ++i) {
         arg_view[i - 1] = argv[i];
     }
 
     std::string_view addr;
     uint16_t port = 0;
     for (auto it = arg_view.begin(); it != arg_view.end(); ++it) {
+
         if (*it == "-a") {
             it++;
             addr = it->data();
@@ -80,11 +81,11 @@ int main(int argc, char** argv) {
                 size_t loop_count = 0;
                 for (auto& p : j2k_packet_table) {
                     j2k_tile.read_packet(p, buf);
-                    ptrdiff_t diff = buf.get_ptr() - pkt_data;
-                    size_t pos     = diff / sizeof(uint8_t);
-                    if (pos >= MAX_PACKET_SIZE) {
-                        break;
-                    }
+                    // ptrdiff_t diff = buf.get_ptr() - pkt_data;
+                    // size_t pos     = diff / sizeof(uint8_t);
+                    // if (pos >= MAX_PACKET_SIZE) {
+                    //     break;
+                    // }
                     ++loop_count;
                 }
 
