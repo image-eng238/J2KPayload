@@ -25,6 +25,7 @@ int main(int argc, char** argv) {
     int64_t interval       = 0;
     size_t skep_frame      = 0;
     int64_t allowable_time = 16;
+    size_t file_loop       = 0;
 
     for (auto it = arg_view.begin(); it != arg_view.end(); ++it) {
         if (*it == "-a") {
@@ -59,6 +60,12 @@ int main(int argc, char** argv) {
                 allowable_time = 16;
             }
         }
+        if (*it == "-l") {
+            it++;
+            if (std::from_chars(it->begin(), it->end(), file_loop).ptr != it->end()) {
+                file_loop = 0;
+            }
+        }
     }
 
     RTPFile rtp(rtp_path.data());
@@ -68,50 +75,50 @@ int main(int argc, char** argv) {
 
     size_t now_frame = 0;
 
-    uint32_t pre_num = 0;
+    uint32_t pre_sequence_number = 0;
 
-    // while (true) {
-    //     send_pktsize = rtp.get_packet(send_buffer);
-    //     if (send_pktsize == 0) break;
-    //     RTPHeader r(send_buffer);
-    //     J2KPayloadHeader j(send_buffer + r.get_header_length());
-    //     if (j.get_MH() != 0) { // is main packet
-    //         ++now_frame;
-    //     }
-    //     if (now_frame <= skep_frame) {
-    //         continue;
-    //     }
-    //     udp.send(send_buffer, send_pktsize);
-    //     std::this_thread::sleep_for(std::chrono::milliseconds(interval));
-    // }
+    uint32_t first_seq       = 0;
+    uint32_t diff_seq        = 0;
+    size_t current_file_loop = 0;
 
     while (true) {
         auto p = std::chrono::system_clock::now() + std::chrono::milliseconds(allowable_time); // 1 ループに 16ms 以上で行うことで 60fps を再現
 
-        send_pktsize = rtp.get_packet(send_buffer);
-        if (send_pktsize == 0) break;
+        send_pktsize = rtp.get_packet(send_buffer, diff_seq * current_file_loop);
+        if (send_pktsize == 0) {
+            if (current_file_loop == file_loop) {
+                break;
+            } else {
+                if (current_file_loop == 0) diff_seq = pre_sequence_number - first_seq + 1;
+                // 2周目以降のための初期設定
+                ++current_file_loop;
+                rtp.reopen(rtp_path.data());
+                send_pktsize = rtp.get_packet(send_buffer, diff_seq * current_file_loop);
+            }
+        }
         udp.send(send_buffer, send_pktsize);
         now_frame++;
 
-        uint32_t num = (J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_ESEQ() << 16) | RTPHeader(send_buffer).get_sequence_number();
-        if (!((num == pre_num + 1) || (pre_num == 0))) {
-            std::cout << "assert false" << std::endl;
+        uint32_t sequence_number = (J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_ESEQ() << 16) | RTPHeader(send_buffer).get_sequence_number();
+        if (!((sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (sequence_number == 0))) {
+            std::cout << "assert false sequence_number: " << sequence_number << ", pre_sequence_number: " << pre_sequence_number << std::endl;
             exit(1);
         }
-        pre_num = num;
+        if (pre_sequence_number == 0) first_seq = sequence_number;
+        pre_sequence_number = sequence_number;
 
         assert(J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_MH());
         while (true) {
-            send_pktsize = rtp.get_packet(send_buffer);
+            send_pktsize = rtp.get_packet(send_buffer, diff_seq * current_file_loop);
             udp.send(send_buffer, send_pktsize);
             std::this_thread::sleep_for(std::chrono::milliseconds(interval));
 
-            uint32_t num = (J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_ESEQ() << 16) | RTPHeader(send_buffer).get_sequence_number();
-            if (!((num == pre_num + 1) || (pre_num == 0))) {
-                std::cout << "assert false" << std::endl;
+            uint32_t sequence_number = (J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_ESEQ() << 16) | RTPHeader(send_buffer).get_sequence_number();
+            if (!((sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (sequence_number == 0))) {
+                std::cout << "assert false sequence_number: " << sequence_number << ", pre_sequence_number: " << pre_sequence_number << std::endl;
                 exit(1);
             }
-            pre_num = num;
+            pre_sequence_number = sequence_number;
 
             if (RTPHeader(send_buffer).get_M()) break; // get_M() == true のとき EOF をパケットに含む
         }

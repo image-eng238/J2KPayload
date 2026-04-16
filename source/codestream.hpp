@@ -88,14 +88,14 @@ private:
     void termination_check();
     void termination_check(const size_t&);
     void receive();
+    uint8_t bit_pos;
+    uint8_t bit_purge;
 
     RTPReceiver* recv;
 
     size_t byte_pos;
     size_t buf_length;
     uint8_t* buf_ptr;
-    uint8_t bit_pos;
-    uint8_t bit_purge;
 };
 
 // ceil(a / b);

@@ -87,7 +87,7 @@ void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_
         // OpenJPH ojph_precinct.cpp : 466 より引用
 
         current_block->lblock = 3;
-        while (buf->get_bit()) current_block->lblock++;
+        while (buf->get_bit()) current_block->lblock++; // 値を観察すると 7 までしか出現してない
 
         // OpenJPH の挙動を見ると，1回 segment_byte を buf から取得した後，符号化パス数が2以上の場合，もう一度 segment_byte を読む必要がある？
         // また，符号化パス数が3以上なら，Lblockをインクリメントするかも
