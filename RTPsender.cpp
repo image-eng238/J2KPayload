@@ -81,8 +81,9 @@ int main(int argc, char** argv) {
     uint32_t diff_seq        = 0;
     size_t current_file_loop = 0;
 
+    auto next = std::chrono::system_clock::now(); // 1 ループに 16ms 以上で行うことで 60fps を再現
     while (true) {
-        auto p = std::chrono::system_clock::now() + std::chrono::milliseconds(allowable_time); // 1 ループに 16ms 以上で行うことで 60fps を再現
+        next += std::chrono::milliseconds(allowable_time);
 
         send_pktsize = rtp.get_packet(send_buffer, diff_seq * current_file_loop);
         if (send_pktsize == 0) {
@@ -127,7 +128,7 @@ int main(int argc, char** argv) {
             printf("frame: %ld\n", now_frame);
         }
 
-        std::this_thread::sleep_until(p);
+        std::this_thread::sleep_until(next);
     }
 
     return 0;
