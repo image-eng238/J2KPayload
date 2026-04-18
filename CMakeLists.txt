@@ -10,11 +10,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # add_definitions(-DGENERATE_LOG)
 
-# sub directories
-add_subdirectory(./source)
-include_directories(./source)
-include_directories(/home/olab/Progs/Take_Library/)
-
 # build flags
 
 #compile options コンパイラは GCC を想定
@@ -26,7 +21,12 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0 -g -fsanitize=address")
 # set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0 -g -fsanitize=memory")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3")
 # set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS} -O3 -g -fsanitize=address")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS} -O3 -g -fno-default-inline -fomit-frame-pointer")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS} -O3 -g -fno-default-inline -fomit-frame-pointer ${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -UNDEBUG")
+
+# sub directories
+add_subdirectory(./source)
+include_directories(./source)
+include_directories(/home/olab/Progs/Take_Library/)
 
 # executes
 add_executable(j2kpay main.cpp)

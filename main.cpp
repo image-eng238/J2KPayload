@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    RTPReceiver rtp_recv;
+    static RTPReceiver rtp_recv;
     if (addr.empty() && port == 0) {
         rtp_recv.sock_bind();
     } else {
