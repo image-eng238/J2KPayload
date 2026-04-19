@@ -436,7 +436,7 @@ void Tile::read_packet(const Precinct* const current_precinct, J2kBuf& payload_b
 #endif
     }
     payload_buf.check_FF();
-    // payload_buf.r_fill();
+    payload_buf.r_fill();
 
     for (uint8_t i = 0; i < current_precinct->get_number_of_subband(); ++i) {
         current_ps = current_precinct->get_psubband_ptr(i);

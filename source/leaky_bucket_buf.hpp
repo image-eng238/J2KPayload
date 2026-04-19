@@ -11,13 +11,13 @@ class leaky_bucket_buf {
 
 public:
     static constexpr size_t BUFFER_SIZE = 1384;
-    static constexpr size_t NUM_BUFFER  = 150000;
+    static constexpr size_t NUM_BUFFER  = 5000;
 
     leaky_bucket_buf();
     leaky_bucket_buf(UDPReceiver* const);
 
     constexpr void set_udp(UDPReceiver* const);
-    void receive();
+    bool receive();
     void write(const uint8_t* const, const size_t&);
     uint8_t* pop();
     int pop(uint8_t*&);
@@ -29,6 +29,7 @@ private:
         uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
         // uint8_t* data;
         bool empty() const { return data_size == 0; }
+        uint32_t get_seq() const { return (data[15] << 0x10) | (data[2] << 0x8) | (data[3]); }
     };
     link_list* next_write;
     link_list* next_pop;

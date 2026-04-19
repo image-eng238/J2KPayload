@@ -2,6 +2,9 @@
 
 #include <cstring>
 #include <cassert>
+#include <thread>
+
+#define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
 
 leaky_bucket_buf::leaky_bucket_buf()
     : buf_list{},
@@ -23,9 +26,11 @@ constexpr void leaky_bucket_buf::set_udp(UDPReceiver* const ptr) {
     this->udp = ptr;
 }
 
-void leaky_bucket_buf::receive() {
+bool leaky_bucket_buf::receive() {
     uint8_t tmp_buf[BUFFER_SIZE];
     int tmp_data_size = udp->receive(tmp_buf, BUFFER_SIZE);
+
+    if (tmp_data_size == -1) { return false; }
 
     {
         std::unique_lock lk(mtx);
@@ -39,15 +44,26 @@ void leaky_bucket_buf::receive() {
         // writing->data_size = udp->receive(writing->data, BUFFER_SIZE);
         memcpy(writing->data, tmp_buf, tmp_data_size);
         writing->data_size = tmp_data_size;
-
-        next_write = writing->next_ptr;
+        if (!(writing->data[0] & 0x80)) {
+            ++current_num_data;
+            can_pop.notify_all();
+            return false;
+        }
 
         // ここで writing と next_ptr の順序を確認し，ソートする．
         // RTP の場合はシーケンス番号をチェックしてソート．
+        static uint32_t pre_seq = 0;
+        PRINT_ASSERTION(((writing->get_seq() == pre_seq + 1) || (pre_seq == 0) || (writing->get_seq() == 0)), "now: %d, pre: %d\n", writing->get_seq(), pre_seq + 1);
+        pre_seq = writing->get_seq();
+
+        next_write = writing->next_ptr;
 
         ++current_num_data;
+        // static size_t c = 0;
+        // printf("r: %ld\n", c++);
         can_pop.notify_all();
     }
+    return true;
 }
 
 void leaky_bucket_buf::write(const uint8_t* const src, const size_t& len) {
@@ -73,6 +89,7 @@ uint8_t* leaky_bucket_buf::pop() {
 int leaky_bucket_buf::pop(uint8_t*& ptr) {
     // assert(!next_pop->empty());
     // while (next_pop->empty()); // データの排出が入力より速いため，データが入力されるまで待機
+
     std::unique_lock lk(mtx);
 
     const bool USE_TIME_OUT = false;
@@ -80,7 +97,7 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     if constexpr (USE_TIME_OUT) {
         static bool is_called = false;
         if (is_called) {
-            const int64_t timeout_ms = 100;
+            const int64_t timeout_ms = 10000;
             auto result              = can_pop.wait_for(lk, std::chrono::milliseconds(timeout_ms), [this] {
                 return current_num_data != 0;
             });
@@ -108,6 +125,8 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     next_pop = popping->next_ptr;
 
     --current_num_data;
+    // static size_t c = 0;
+    // printf("      p: %ld\n", c++);
     can_receive.notify_all();
 
     return out;

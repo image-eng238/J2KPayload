@@ -87,7 +87,15 @@ void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_
         // OpenJPH ojph_precinct.cpp : 466 より引用
 
         current_block->lblock = 3;
-        while (buf->get_bit()) current_block->lblock++; // 値を観察すると 7 までしか出現してない
+        // while (buf->get_bit()) current_block->lblock++; // 値を観察すると 8 までしか出現してない
+
+        for (uint8_t i = 0; i < 10; ++i) {
+            if (buf->get_bit()) {
+                current_block->lblock++;
+            } else {
+                break;
+            }
+        }
 
         // OpenJPH の挙動を見ると，1回 segment_byte を buf から取得した後，符号化パス数が2以上の場合，もう一度 segment_byte を読む必要がある？
         // また，符号化パス数が3以上なら，Lblockをインクリメントするかも
@@ -110,14 +118,16 @@ void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_
             current_block->length += segment_byte_test;
         }
 #if defined(GENERATE_LOG)
-        std::cout << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << "," << current_block->length << std::endl;
+        printf("%d,%d,%d\n", debug_resolution, band_pos, current_block->length);
+        // std::cout << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << "," << current_block->length << std::endl;
         // std::cout << static_cast<uint32_t>(0) << "," << static_cast<uint32_t>(band_pos) << "," << current_block->length << std::endl;
 #endif
     } else {
         current_block->reuse();
 #if defined(GENERATE_LOG)
+        printf("%d,%d,0\n", debug_resolution, band_pos);
         // std::cout << std::dec << ++call_count << ": " << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << ",0" << std::endl;
-        std::cout << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << ",0" << std::endl;
+        // std::cout << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << ",0" << std::endl;
 #endif
     }
 }

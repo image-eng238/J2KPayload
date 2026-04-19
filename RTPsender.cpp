@@ -81,11 +81,13 @@ int main(int argc, char** argv) {
     uint32_t diff_seq        = 0;
     size_t current_file_loop = 0;
 
+    size_t sended_packet = 0;
+
     auto next = std::chrono::system_clock::now(); // 1 ループに 16ms 以上で行うことで 60fps を再現
     while (true) {
         next += std::chrono::milliseconds(allowable_time);
 
-        send_pktsize = rtp.get_packet(send_buffer, diff_seq * current_file_loop);
+        send_pktsize = rtp.get_packet(send_buffer, diff_seq * current_file_loop); // main packet
         if (send_pktsize == 0) {
             if (current_file_loop == file_loop) {
                 break;
@@ -98,6 +100,7 @@ int main(int argc, char** argv) {
             }
         }
         udp.send(send_buffer, send_pktsize);
+        sended_packet++;
         now_frame++;
 
         uint32_t sequence_number = (J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_ESEQ() << 16) | RTPHeader(send_buffer).get_sequence_number();
@@ -109,9 +112,10 @@ int main(int argc, char** argv) {
         pre_sequence_number = sequence_number;
 
         assert(J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_MH());
-        while (true) {
+        while (true) { // body packet
             send_pktsize = rtp.get_packet(send_buffer, diff_seq * current_file_loop);
             udp.send(send_buffer, send_pktsize);
+            sended_packet++;
             std::this_thread::sleep_for(std::chrono::milliseconds(interval));
 
             uint32_t sequence_number = (J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_ESEQ() << 16) | RTPHeader(send_buffer).get_sequence_number();
@@ -130,6 +134,9 @@ int main(int argc, char** argv) {
 
         std::this_thread::sleep_until(next);
     }
+    char stop = 0;
+    udp.send(&stop, 1);
+    printf("sended_pakcet: %ld\n", sended_packet);
 
     return 0;
 }

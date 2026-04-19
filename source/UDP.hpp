@@ -94,7 +94,7 @@ public:
     ssize_t receive(void* const buf_ptr, const size_t buf_size) {
         auto output = recv(sock, buf_ptr, buf_size, 0);
         if (output == -1) {
-            std::cout << "receive error" << std::endl;
+            std::cout << "receive error, errno: " << errno << std::endl;
         }
         return output;
     }
