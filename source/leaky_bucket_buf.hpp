@@ -26,13 +26,14 @@ public:
     int pop(uint8_t*&);
 
 private:
+    static uint32_t get_seq(const uint8_t* const data) { return (data[0] & 0x80) ? (data[15] << 0x10) | (data[2] << 0x8) | (data[3]) : 0; }
+
     struct link_list {
         link_list* next_ptr;
         int data_size;
         uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
         // uint8_t* data;
         bool empty() const { return data_size == 0; }
-        uint32_t get_seq() const { return (data[15] << 0x10) | (data[2] << 0x8) | (data[3]); }
     };
     link_list* next_write;
     link_list* next_pop;
@@ -41,7 +42,8 @@ private:
     std::mutex mtx;
     std::condition_variable can_pop;
     std::condition_variable can_receive;
-    std::atomic_size_t current_num_data;
+    size_t current_num_data;
+    // std::atomic_size_t current_num_data;
 
     link_list buf_list[NUM_BUFFER];
     // uint8_t buffer[BUFFER_SIZE * NUM_BUFFER];
