@@ -53,7 +53,7 @@ bool leaky_bucket_buf::receive() {
         // ここで writing と next_ptr の順序を確認し，ソートする．
         // RTP の場合はシーケンス番号をチェックしてソート．
         static uint32_t pre_seq = 0;
-        PRINT_ASSERTION(((writing->get_seq() == pre_seq + 1) || (pre_seq == 0) || (writing->get_seq() == 0)), "now: %d, pre: %d\n", writing->get_seq(), pre_seq + 1);
+        PRINT_ASSERTION(((writing->get_seq() == pre_seq + 1) || (pre_seq == 0) || (writing->get_seq() == 0)), "now: %d, pre: %d, diff: %d\n", writing->get_seq(), pre_seq + 1, writing->get_seq() - pre_seq);
         pre_seq = writing->get_seq();
 
         next_write = writing->next_ptr;
