@@ -27,15 +27,22 @@ constexpr void leaky_bucket_buf::set_udp(UDPReceiver* const ptr) {
 }
 
 bool leaky_bucket_buf::receive() {
-    uint8_t tmp_buf[BUFFER_SIZE];
-    int tmp_data_size = udp->receive(tmp_buf, BUFFER_SIZE);
+    // uint8_t tmp_buf[BUFFER_SIZE];
+    // int tmp_data_size = udp->receive(tmp_buf, BUFFER_SIZE);
 
-    if (tmp_data_size == -1) { return false; }
+    // if (tmp_data_size == -1) {
+    //     if (errno == EAGAIN) {
+    //         return true;
+    //     } else {
+    //         perror("receive error");
+    //         return false;
+    //     }
+    // }
 
-    static uint32_t pre_seq = 0;
-    const uint32_t recv_seq = get_seq(tmp_buf);
-    PRINT_ASSERTION(((recv_seq == pre_seq + 1) || (pre_seq == 0) || (recv_seq == 0)), "now: %d, pre: %d, diff: %d\n", recv_seq, pre_seq, recv_seq - pre_seq);
-    pre_seq = recv_seq;
+    // static uint32_t pre_seq = 0;
+    // const uint32_t recv_seq = get_seq(tmp_buf);
+    // PRINT_ASSERTION(((recv_seq == pre_seq + 1) || (pre_seq == 0) || (recv_seq == 0)), "now: %d, pre: %d, diff: %d\n", recv_seq, pre_seq, recv_seq - pre_seq);
+    // pre_seq = recv_seq;
 
     {
         std::unique_lock lk(mtx);
@@ -46,9 +53,24 @@ bool leaky_bucket_buf::receive() {
 
         auto& writing = next_write;
         assert(writing->empty());
-        // writing->data_size = udp->receive(writing->data, BUFFER_SIZE);
-        memcpy(writing->data, tmp_buf, tmp_data_size);
-        writing->data_size = tmp_data_size;
+        writing->data_size = udp->receive(writing->data, BUFFER_SIZE);
+
+        if (writing->data_size == -1) {
+            if (errno == EAGAIN) {
+                return true;
+            } else {
+                perror("receive error");
+                return false;
+            }
+        }
+
+        static uint32_t pre_seq = 0;
+        const uint32_t recv_seq = get_seq(writing->data);
+        PRINT_ASSERTION(((recv_seq == pre_seq + 1) || (pre_seq == 0) || (recv_seq == 0)), "now: %d, pre: %d, diff: %d\n", recv_seq, pre_seq, recv_seq - pre_seq);
+        pre_seq = recv_seq;
+
+        // memcpy(writing->data, tmp_buf, tmp_data_size);
+        // writing->data_size = tmp_data_size;
         if (!(writing->data[0] & 0x80)) {
             ++current_num_data;
             can_pop.notify_all();
@@ -119,6 +141,7 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
             return current_num_data != 0;
         });
     }
+    // lk.unlock();
 
     // while (current_num_data.load(std::memory_order_relaxed) == 0) {
     // while (current_num_data == 0) {

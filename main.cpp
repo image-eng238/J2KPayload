@@ -119,9 +119,12 @@ int main(int argc, char** argv) {
     auto& r = rtp_recv.access_recv_buf();
     std::thread produser([&r, &receive_finish, &start_time]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        while (true) {
-            if (!r.receive()) break;
-            // std::this_thread::sleep_for(std::chrono::microseconds(10));
+        // while (true) {
+        //     if (!r.receive()) break;
+        //     // std::this_thread::sleep_for(std::chrono::microseconds(10));
+        // }
+        while (r.receive()) {
+            std::this_thread::yield();
         }
         receive_finish = std::chrono::steady_clock::now();
         printf("receive finish: %ld\n", receive_finish - start_time);

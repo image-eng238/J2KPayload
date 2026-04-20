@@ -33,7 +33,7 @@ private:
         int data_size;
         uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
         // uint8_t* data;
-        bool empty() const { return data_size == 0; }
+        bool empty() const { return data_size <= 0; }
     };
     link_list* next_write;
     link_list* next_pop;
