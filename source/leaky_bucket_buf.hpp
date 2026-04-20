@@ -7,6 +7,9 @@
 
 #include <mutex>
 #include <condition_variable>
+
+#include <atomic>
+
 class leaky_bucket_buf {
 
 public:
@@ -38,7 +41,7 @@ private:
     std::mutex mtx;
     std::condition_variable can_pop;
     std::condition_variable can_receive;
-    size_t current_num_data;
+    std::atomic_size_t current_num_data;
 
     link_list buf_list[NUM_BUFFER];
     // uint8_t buffer[BUFFER_SIZE * NUM_BUFFER];

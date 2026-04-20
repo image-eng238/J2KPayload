@@ -33,7 +33,7 @@ bool leaky_bucket_buf::receive() {
     if (tmp_data_size == -1) { return false; }
 
     {
-        std::unique_lock lk(mtx);
+        // std::unique_lock lk(mtx);
         // can_receive.wait(lk, [this] {
         //     return current_num_data < NUM_BUFFER;
         // });
@@ -59,8 +59,8 @@ bool leaky_bucket_buf::receive() {
         next_write = writing->next_ptr;
 
         ++current_num_data;
-        // static size_t c = 0;
-        // printf("r: %ld\n", c++);
+        static size_t c = 0;
+        printf("r: %ld\n", c++);
         can_pop.notify_all();
     }
     return true;
@@ -90,31 +90,35 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     // assert(!next_pop->empty());
     // while (next_pop->empty()); // データの排出が入力より速いため，データが入力されるまで待機
 
-    std::unique_lock lk(mtx);
+    // std::unique_lock lk(mtx);
 
-    const bool USE_TIME_OUT = false;
+    // const bool USE_TIME_OUT = false;
 
-    if constexpr (USE_TIME_OUT) {
-        static bool is_called = false;
-        if (is_called) {
-            const int64_t timeout_ms = 10000;
-            auto result              = can_pop.wait_for(lk, std::chrono::milliseconds(timeout_ms), [this] {
-                return current_num_data != 0;
-            });
-            if (result == static_cast<bool>(std::cv_status::timeout)) {
-                std::cout << "can_pop.wait_for(" << timeout_ms << "ms): timeout" << std::endl;
-                exit(1);
-            }
-        } else {
-            can_pop.wait(lk, [this] {
-                return current_num_data != 0;
-            });
-            is_called = true;
-        }
-    } else {
-        can_pop.wait(lk, [this] {
-            return current_num_data != 0;
-        });
+    // if constexpr (USE_TIME_OUT) {
+    //     static bool is_called = false;
+    //     if (is_called) {
+    //         const int64_t timeout_ms = 10000;
+    //         auto result              = can_pop.wait_for(lk, std::chrono::milliseconds(timeout_ms), [this] {
+    //             return current_num_data != 0;
+    //         });
+    //         if (result == static_cast<bool>(std::cv_status::timeout)) {
+    //             std::cout << "can_pop.wait_for(" << timeout_ms << "ms): timeout" << std::endl;
+    //             exit(1);
+    //         }
+    //     } else {
+    //         can_pop.wait(lk, [this] {
+    //             return current_num_data != 0;
+    //         });
+    //         is_called = true;
+    //     }
+    // } else {
+    //     can_pop.wait(lk, [this] {
+    //         return current_num_data != 0;
+    //     });
+    // }
+
+    while (current_num_data == 0) {
+        std::this_thread::yield();
     }
 
     auto popping       = next_pop;
@@ -125,8 +129,8 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     next_pop = popping->next_ptr;
 
     --current_num_data;
-    // static size_t c = 0;
-    // printf("      p: %ld\n", c++);
+    static size_t c = 0;
+    printf("      p: %ld\n", c++);
     can_receive.notify_all();
 
     return out;
