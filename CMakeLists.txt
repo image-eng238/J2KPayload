@@ -34,4 +34,6 @@ target_link_libraries(j2kpay CodeStream Decoding LeakyBucket)
 
 add_executable(RTPsender RTPsender.cpp)
 
+add_executable(sender_test sender_test.cpp)
+
 add_executable(UDPtest UDPtest.cpp)
