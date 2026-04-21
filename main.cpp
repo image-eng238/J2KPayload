@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
                 size_t loop_count = 0;
                 for (auto& p : j2k_packet_table) {
                     j2k_tile.read_packet(p, buf);
-                    // ptrdiff_t diff = buf.get_ptr() - pkt_data;
+                    // ptrdiff_t diread_packetff = buf.get_ptr() - pkt_data;
                     // size_t pos     = diff / sizeof(uint8_t);
                     // if (pos >= MAX_PACKET_SIZE) {
                     //     break;
@@ -102,6 +102,9 @@ int main(int argc, char** argv) {
                     printf("main header read\n");
                 }
                 ++analysis_frame;
+                if (analysis_frame % 10 == 0) {
+                    printf("analysis_frame: %ld\n", analysis_frame);
+                }
             }
 
             std::this_thread::yield();
