@@ -11,7 +11,8 @@ int main(void) {
     RTPHeader rtp(recv_buf);
     J2KPayloadHeader j2k(recv_buf + RTPHeader::get_header_length());
 
-    uint32_t pre = 0;
+    uint32_t pre     = 0;
+    size_t count_err = 0;
 
     while (true) {
         // std::this_thread::yield();
@@ -24,17 +25,19 @@ int main(void) {
         if (siz == 1) break;
         auto sq = leaky_bucket_buf::get_seq(recv_buf);
         // assert(sq == pre + 1 || pre == 0);
-        printf("%d", sq);
         if (!(sq == pre + 1 || pre == 0)) {
+            printf("%d", sq);
             printf(": error diff: %d, receive size: %d type: %x\n", sq - pre, siz, j2k.get_MH());
+            ++count_err;
         } else {
-            puts("");
+            // puts("");
         }
         pre = sq;
     }
     // });
 
     // t1.join();
+    printf("count_err: %ld\n", count_err);
 
     return 0;
 }
