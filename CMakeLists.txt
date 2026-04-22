@@ -8,7 +8,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # global defines
 
-# add_definitions(-DGENERATE_LOG)
+add_definitions(-DGENERATE_LOG)
 
 # build flags
 
@@ -35,3 +35,5 @@ target_link_libraries(j2kpay CodeStream Decoding LeakyBucket)
 add_executable(RTPsender RTPsender.cpp)
 
 add_executable(UDPtest UDPtest.cpp)
+
+add_executable(stop_j2kpay stop_j2kpay.cpp)
