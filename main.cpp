@@ -73,6 +73,7 @@ int main(int argc, char** argv) {
         Tile j2k_tile;
         std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
 
+        printf("analysis thread ready\n");
         while (rtp_recv.receive()) {
 
             auto& j2kpayload    = rtp_recv.access_payload();
@@ -102,12 +103,14 @@ int main(int argc, char** argv) {
                     printf("main header read\n");
                 }
                 ++analysis_frame;
+#ifdef GENERATE_FRAME
                 if (analysis_frame % 10 == 0) {
                     printf("analysis_frame: %ld\n", analysis_frame);
                 }
+#endif
             }
 
-            std::this_thread::yield();
+            // std::this_thread::yield();
         }
         analysis_finish = std::chrono::steady_clock::now();
         printf("analysis finish: %ld\n", analysis_finish - start_time);
@@ -120,13 +123,14 @@ int main(int argc, char** argv) {
 
     auto& r = rtp_recv.access_recv_buf();
     std::thread produser([&r, &receive_finish, &start_time]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        printf("receive thread ready\n");
         // while (true) {
         //     if (!r.receive()) break;
         //     // std::this_thread::sleep_for(std::chrono::microseconds(10));
         // }
         while (r.receive()) {
-            std::this_thread::yield();
+            // std::this_thread::yield();
         }
         receive_finish = std::chrono::steady_clock::now();
         printf("receive finish: %ld\n", receive_finish - start_time);
