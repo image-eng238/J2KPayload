@@ -73,10 +73,7 @@ int main(int argc, char** argv) {
         Tile j2k_tile;
         std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
 
-        while (true) {
-            if (!rtp_recv.receive()) {
-                break;
-            }
+        while (rtp_recv.receive()) {
 
             auto& j2kpayload    = rtp_recv.access_payload();
             auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
@@ -88,7 +85,7 @@ int main(int argc, char** argv) {
                 size_t loop_count = 0;
                 for (auto& p : j2k_packet_table) {
                     j2k_tile.read_packet(p, buf);
-                    // ptrdiff_t diff = buf.get_ptr() - pkt_data;
+                    // ptrdiff_t diread_packetff = buf.get_ptr() - pkt_data;
                     // size_t pos     = diff / sizeof(uint8_t);
                     // if (pos >= MAX_PACKET_SIZE) {
                     //     break;
@@ -109,14 +106,16 @@ int main(int argc, char** argv) {
                     printf("analysis_frame: %ld\n", analysis_frame);
                 }
             }
+
+            std::this_thread::yield();
         }
         analysis_finish = std::chrono::steady_clock::now();
         printf("analysis finish: %ld\n", analysis_finish - start_time);
     });
     // std::thread consumer([&] {
-    //     static size_t loop_count = 0;
-    //     while (true) rtp_recv.receive();
-    //     ++loop_count;
+    //     while (rtp_recv.receive()) {
+    //         std::this_thread::yield();
+    //     }
     // });
 
     auto& r = rtp_recv.access_recv_buf();

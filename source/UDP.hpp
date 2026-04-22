@@ -56,12 +56,15 @@ public:
         }();
         return true;
     }
-    bool send(const void* const buf_ptr, const size_t buf_size) {
-        if (sendto(sock, buf_ptr, buf_size, 0, reinterpret_cast<const sockaddr*>(&socket_address), sizeof(sockaddr_in)) == -1) {
+    auto send(const void* const buf_ptr, const size_t buf_size) {
+        auto output = sendto(sock, buf_ptr, buf_size, 0, reinterpret_cast<const sockaddr*>(&socket_address), sizeof(sockaddr_in));
+        if (output == -1) {
             std::cout << "send error" << std::endl;
-            return false;
         }
-        return true;
+        if (buf_size != static_cast<size_t>(output)) {
+            std::cout << "send error" << std::endl;
+        }
+        return output;
     }
 };
 
