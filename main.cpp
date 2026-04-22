@@ -105,6 +105,9 @@ int main(int argc, char** argv) {
                     printf("main header read\n");
                 }
                 ++analysis_frame;
+                if (analysis_frame % 10 == 0) {
+                    printf("analysis_frame: %ld\n", analysis_frame);
+                }
             }
         }
         analysis_finish = std::chrono::steady_clock::now();
