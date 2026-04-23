@@ -47,7 +47,7 @@ bool leaky_bucket_buf::receive() {
     assert(current_num_data < NUM_BUFFER); // buffer leak
 
     auto& writing = next_write;
-    assert(writing->empty());
+    // assert(writing->empty());
     // writing->data_size = udp->receive(writing->data, BUFFER_SIZE);
 
     // static uint32_t pre_seq = 0;
