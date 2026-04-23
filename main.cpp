@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
 #endif
             }
 
-            // std::this_thread::yield();
+            std::this_thread::yield();
         }
         analysis_finish = std::chrono::steady_clock::now();
         printf("analysis finish: %ld\n", analysis_finish - start_time);

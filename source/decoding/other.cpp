@@ -117,6 +117,7 @@ void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_
             segment_byte_test = buf->get_bit(bits_to_read_test);
             current_block->length += segment_byte_test;
         }
+        [[maybe_unused]] volatile auto opt = current_block->length;
 #if defined(GENERATE_LOG)
         printf("%d,%d,%d\n", debug_resolution, band_pos, current_block->length);
         // std::cout << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << "," << current_block->length << std::endl;
