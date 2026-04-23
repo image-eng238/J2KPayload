@@ -89,7 +89,7 @@ void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_
         current_block->lblock = 3;
         // while (buf->get_bit()) current_block->lblock++; // 値を観察すると 8 までしか出現してない
 
-        for (uint8_t i = 0; i < 10; ++i) {
+        for (uint8_t i = 0; i < 15; ++i) {
             if (buf->get_bit()) {
                 current_block->lblock++;
             } else {
@@ -107,7 +107,7 @@ void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_
         num_phld_passes *= 3;
         new_pass -= num_phld_passes;
 
-        uint32_t bits_to_read_test = current_block->lblock; // 大きくても 11 まで？
+        uint32_t bits_to_read_test = current_block->lblock; // 大きくても 13 まで？
         uint32_t segment_byte_test = buf->get_bit(bits_to_read_test);
         assert(segment_byte_test > 1);
         current_block->length = segment_byte_test;

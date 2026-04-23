@@ -128,7 +128,7 @@ private:
     // RTPで受信した符号化データを保持させる．
 
     static constexpr size_t NUM_BUFFER  = 5;
-    static constexpr size_t BUFFER_SIZE = 0xF00;
+    static constexpr size_t BUFFER_SIZE = 0xFFFF;
 
     static inline uint8_t cbk_data_buffer[NUM_BUFFER][BUFFER_SIZE] = {};
     static inline size_t buffer_pos                                = 0;

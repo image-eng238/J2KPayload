@@ -78,22 +78,35 @@ void J2kBuf::check_FF() {
 uint8_t* J2kBuf::get_ptr() const { return &buf_ptr[byte_pos]; }
 
 uint8_t* J2kBuf::make_packet_data(const size_t& len, uint8_t* const ptr) {
+    static size_t call_count = 0;
+    ++call_count;
     r_fill();
     if (byte_pos + len < buf_length) {
-        // memcpy(ptr, get_ptr(), len);
+        memcpy(ptr, get_ptr(), len);
         byte_pos += len;
-        return ptr;
     } else {
-        size_t cp1len         = buf_length - byte_pos;
-        size_t cp2len         = len - cp1len;
-        uint8_t* const cp1ptr = get_ptr();
+        uint8_t* dest_ptr      = ptr;
+        const uint8_t* src_ptr = get_ptr();
+        size_t cpd             = len;
+        size_t cplen           = buf_length - byte_pos;
+        memcpy(dest_ptr, src_ptr, cplen);
         receive();
-        uint8_t* const cp2ptr = get_ptr();
-        // memcpy(ptr, cp1ptr, cp1len);
-        // memcpy(ptr + cp1len, cp2ptr, cp2len);
-        byte_pos += cp2len;
-        return ptr;
+
+        for (size_t i = 0; i < 5; ++i) {
+            dest_ptr += cplen;
+            src_ptr = get_ptr();
+            cpd -= cplen;
+            cplen = std::min(cpd, buf_length);
+            memcpy(dest_ptr, src_ptr, cplen);
+            if (cplen == buf_length) {
+                receive();
+            } else {
+                break;
+            }
+        }
+        byte_pos += cplen;
     }
+    return ptr;
 }
 
 void J2kBuf::advance_byte_pos(const size_t& n) {
