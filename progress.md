@@ -11,7 +11,7 @@
 |Raspberry Pi 3 model B+|Raspberry Pi OS 64 bit|Quad core ARM Cortex-A53|-|4GB|GCC 14.2.0|-|
 |Raspberry Pi 4 model B|Raspberry Pi OS 64 bit|-|-|-|-|
 |ノートPC1|Windows 11 WSL2 Ubuntu 24.04 LTS|CPU 11th Gen Intel(R) Core(TM) i7-1165G7 @2.80GHz|-|16GB|GCC 13.3.0|電源モード バランス|
-|ノートPC2|Ubuntu|-|-|4GB|GCC|常時 AC アダプタ使用|
+|ノートPC2|Ubuntu 22.04.5 LTS|Intel(R) Core(TM) i5-3230M CPU @ 2.60GHz|-|4GB|GCC 11.4.0|常時 AC アダプタ使用|
 |デスクトップPC|Windows 11 WSL2 Ubuntu 24.04 LTS|AMD Ryzen 7 7800X3D 8-Core Processor 4.20 GHz|AMD Radeon RX 7800XT|32GB|GCC 13.3.0|-|
 
 ## 2026/04/07
