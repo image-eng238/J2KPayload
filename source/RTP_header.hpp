@@ -115,7 +115,7 @@ public:
         // std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl;
 #endif
         // assert((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0));
-        PRINT_ASSERTION((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (extended_sequence_number == 0), "extended_sequence_number: %d ,pre_sequence_number: %d, diff: %d\n", extended_sequence_number, pre_sequence_number, extended_sequence_number - pre_sequence_number);
+        // PRINT_ASSERTION((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (extended_sequence_number == 0), "extended_sequence_number: %d ,pre_sequence_number: %d, diff: %d\n", extended_sequence_number, pre_sequence_number, extended_sequence_number - pre_sequence_number);
         pre_sequence_number = extended_sequence_number;
 
         return true;

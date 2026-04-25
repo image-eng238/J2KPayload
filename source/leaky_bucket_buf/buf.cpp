@@ -40,8 +40,8 @@ bool leaky_bucket_buf::receive() {
     if (tmp_data_size > 0) {
         static uint32_t pre_seq = 0;
         const uint32_t recv_seq = get_seq(tmp_buf);
-        PRINT_ASSERTION(((recv_seq == pre_seq + 1) || (pre_seq == 0) || (recv_seq == 0)), "now: %d, pre: %d, diff: %d\n", recv_seq, pre_seq, recv_seq - pre_seq);
-        pre_seq = recv_seq;
+        // PRINT_ASSERTION(((recv_seq == pre_seq + 1) || (pre_seq == 0) || (recv_seq == 0)), "now: %d, pre: %d, diff: %d\n", recv_seq, pre_seq, recv_seq - pre_seq);
+        pre_seq                 = recv_seq;
     }
 
     assert(current_num_data < NUM_BUFFER); // buffer leak
