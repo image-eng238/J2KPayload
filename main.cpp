@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
         Tile j2k_tile;
         std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
 
-        printf("analysis thread ready\n");
+        printf("analysis thread ready...\n");
         while (true) {
             try {
                 if (!rtp_recv.receive()) break;
@@ -132,7 +132,7 @@ int main(int argc, char** argv) {
     auto& r = rtp_recv.access_recv_buf();
     std::thread produser([&r, &receive_finish, &start_time]() {
         // std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        printf("receive thread ready\n");
+        printf("receive thread ready...\n");
         // while (true) {
         //     if (!r.receive()) break;
         //     // std::this_thread::sleep_for(std::chrono::microseconds(10));

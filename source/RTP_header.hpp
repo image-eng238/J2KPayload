@@ -13,7 +13,6 @@
 
 class rtp_sequence_error : public std::runtime_error {
 public:
-    explicit rtp_sequence_error(const std::string& str) : std::runtime_error{str} {}
     explicit rtp_sequence_error(const char* str) : std::runtime_error{str} {}
 };
 
@@ -113,19 +112,19 @@ public:
 
         uint32_t extended_sequence_number = get_extended_sequence_number();
 
-        if ((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0)) {
+        if ((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (extended_sequence_number == 0)) {
             pkt_data_ptr        = use_buf + rtp_header.get_header_length() + payload_header.get_header_length();
             pkt_data_size       = pkt_size - (rtp_header.get_header_length() + payload_header.get_header_length());
             pre_sequence_number = extended_sequence_number;
 
             return true;
         } else {
-            printf("RTP sequence error, loss packet: %d\n", extended_sequence_number - pre_sequence_number + 1);
+            printf("RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d\n", pre_sequence_number, extended_sequence_number, extended_sequence_number - (pre_sequence_number + 1));
             pkt_data_ptr        = nullptr;
             pkt_data_size       = 0;
             pre_sequence_number = extended_sequence_number;
 
-            throw rtp_sequence_error("aaa");
+            throw rtp_sequence_error("packet loss");
         }
     }
     bool dest_packt() {

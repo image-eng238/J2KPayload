@@ -10,8 +10,8 @@ namespace ConstValue {
 
         num_resolution      = 6,
         num_subband         = 10,
-        // num_precinct        = 1890,
-       num_precinct        = 612,
+        num_precinct        = 1890,
+        //    num_precinct        = 612,
         num_precinctsubband = 4590,
         num_codeblock       = 4590,
 
