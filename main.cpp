@@ -78,42 +78,47 @@ int main(int argc, char** argv) {
         bool is_packet_error = false;
 
         printf("analysis thread ready\n");
-        while (rtp_recv.receive()) {
+        while (true) {
+            try {
+                if (!rtp_recv.receive()) break;
+                auto& j2kpayload    = rtp_recv.access_payload();
+                auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
+                auto& pkt_data_size = rtp_recv.access_pkt_data_size();
 
-            auto& j2kpayload    = rtp_recv.access_payload();
-            auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
-            auto& pkt_data_size = rtp_recv.access_pkt_data_size();
+                // decoder
+                if (j2kpayload.get_MH() == 0) { // body packet
 
-            // decoder
-            if (j2kpayload.get_MH() == 0) { // body packet
+                    if (is_packet_error) continue;
 
-                if (is_packet_error) continue;
-
-                J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
-                size_t loop_count = 0;
-                for (auto& p : j2k_packet_table) {
-                    if (read_packet(p, buf)) {
-                        // エラーが出た場合，メインパケットの出現までパケットを捨てる
-                        is_packet_error = true;
-                        break;
-                    }
-                    ++loop_count;
-                }
-
-            } else {
-                if (main_header.empty()) {
                     J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
-                    main_header.read(buf);
-                    j2k_tile.init(main_header, buf);
-                    j2k_tile.read(main_header, j2k_packet_table);
-                    printf("main header read\n");
-                }
-                ++analysis_frame;
+                    size_t loop_count = 0;
+                    for (auto& p : j2k_packet_table) {
+                        if (read_packet(p, buf)) {
+                            // エラーが出た場合，メインパケットの出現までパケットを捨てる
+                            is_packet_error = true;
+                            break;
+                        }
+                        ++loop_count;
+                    }
+
+                } else {
+                    if (main_header.empty()) {
+                        J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
+                        main_header.read(buf);
+                        j2k_tile.init(main_header, buf);
+                        j2k_tile.read(main_header, j2k_packet_table);
+                        printf("main header read\n");
+                    }
+                    ++analysis_frame;
 #ifdef GENERATE_FRAME
-                if (analysis_frame % 10 == 0) {
-                    printf("analysis_frame: %ld\n", analysis_frame);
-                }
+                    if (analysis_frame % 10 == 0) {
+                        printf("analysis_frame: %ld\n", analysis_frame);
+                    }
 #endif
+                    is_packet_error = false;
+                }
+            } catch (rtp_sequence_error& e) {
+                is_packet_error = true;
             }
 
             std::this_thread::yield();

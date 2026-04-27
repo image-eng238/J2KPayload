@@ -4,11 +4,18 @@
 #include <cstddef>
 #include <cassert>
 #include <cstdio>
+#include <exception>
 #define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
 
 #include "UDP.hpp"
 #include "buffer_pool.hpp"
 #include "leaky_bucket_buf.hpp"
+
+class rtp_sequence_error : public std::runtime_error {
+public:
+    explicit rtp_sequence_error(const std::string& str) : std::runtime_error{str} {}
+    explicit rtp_sequence_error(const char* str) : std::runtime_error{str} {}
+};
 
 class RTPHeader {
 public:
@@ -98,27 +105,28 @@ public:
     bool receive() {
 
         auto pkt_size = recv_buf.pop(use_buf);
-        if (pkt_size == -1) {
-            std::cout << "receive error, errno: " << errno << std::endl;
-            return false;
-        }
+
         if (!(use_buf[0] & 0x80)) { return false; }
 
         this->rtp_header.set_ptr(use_buf);
         this->payload_header.set_ptr(use_buf + rtp_header.get_header_length());
 
-        pkt_data_ptr  = use_buf + rtp_header.get_header_length() + payload_header.get_header_length();
-        pkt_data_size = pkt_size - (rtp_header.get_header_length() + payload_header.get_header_length());
-
         uint32_t extended_sequence_number = get_extended_sequence_number();
-#ifndef GENERATE_LOG
-        // std::cout << std::dec << "pkt_size: " << pkt_size << ", pkt_data_size: " << pkt_data_size << ", extended_sequence_number:" << extended_sequence_number << std::endl;
-#endif
-        // assert((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0));
-        // PRINT_ASSERTION((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (extended_sequence_number == 0), "extended_sequence_number: %d ,pre_sequence_number: %d, diff: %d\n", extended_sequence_number, pre_sequence_number, extended_sequence_number - pre_sequence_number);
-        pre_sequence_number = extended_sequence_number;
 
-        return true;
+        if (!(extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0)) {
+            printf("RTP sequence error, loss packet: %d\n", extended_sequence_number - pre_sequence_number + 1);
+            pkt_data_ptr  = nullptr;
+            pkt_data_size = 0;
+            ++pre_sequence_number;
+
+            throw rtp_sequence_error("aaa");
+        } else {
+            pkt_data_ptr        = use_buf + rtp_header.get_header_length() + payload_header.get_header_length();
+            pkt_data_size       = pkt_size - (rtp_header.get_header_length() + payload_header.get_header_length());
+            pre_sequence_number = extended_sequence_number;
+
+            return true;
+        }
     }
 
 private:
