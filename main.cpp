@@ -69,13 +69,12 @@ int main(int argc, char** argv) {
     std::chrono::steady_clock::time_point analysis_finish;
     std::chrono::steady_clock::time_point receive_finish;
     size_t analysis_frame = 0;
+    size_t loss_frame     = 0;
 
     std::thread consumer([&] {
         MainHeader main_header;
         Tile j2k_tile;
         std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
-
-        bool is_packet_error = false;
 
         printf("analysis thread ready\n");
         while (true) {
@@ -88,16 +87,10 @@ int main(int argc, char** argv) {
                 // decoder
                 if (j2kpayload.get_MH() == 0) { // body packet
 
-                    if (is_packet_error) continue;
-
                     J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
                     size_t loop_count = 0;
                     for (auto& p : j2k_packet_table) {
-                        if (read_packet(p, buf)) {
-                            // エラーが出た場合，メインパケットの出現までパケットを捨てる
-                            is_packet_error = true;
-                            break;
-                        }
+                        read_packet(p, buf);
                         ++loop_count;
                     }
 
@@ -111,14 +104,18 @@ int main(int argc, char** argv) {
                     }
                     ++analysis_frame;
 #ifdef GENERATE_FRAME
-                    if (analysis_frame % 10 == 0) {
+                    if (analysis_frame % 100 == 0) {
                         printf("analysis_frame: %ld\n", analysis_frame);
                     }
 #endif
-                    is_packet_error = false;
                 }
             } catch (rtp_sequence_error& e) {
-                is_packet_error = true;
+                // メインパケットの出現までパケットを破棄
+                // 将来的には timestanp で制御
+                while (rtp_recv.dest_packt()) {
+                    std::this_thread::yield();
+                }
+                ++loss_frame;
             }
 
             std::this_thread::yield();

@@ -113,20 +113,33 @@ public:
 
         uint32_t extended_sequence_number = get_extended_sequence_number();
 
-        if (!(extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0)) {
-            printf("RTP sequence error, loss packet: %d\n", extended_sequence_number - pre_sequence_number + 1);
-            pkt_data_ptr  = nullptr;
-            pkt_data_size = 0;
-            ++pre_sequence_number;
-
-            throw rtp_sequence_error("aaa");
-        } else {
+        if ((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0)) {
             pkt_data_ptr        = use_buf + rtp_header.get_header_length() + payload_header.get_header_length();
             pkt_data_size       = pkt_size - (rtp_header.get_header_length() + payload_header.get_header_length());
             pre_sequence_number = extended_sequence_number;
 
             return true;
+        } else {
+            printf("RTP sequence error, loss packet: %d\n", extended_sequence_number - pre_sequence_number + 1);
+            pkt_data_ptr        = nullptr;
+            pkt_data_size       = 0;
+            pre_sequence_number = extended_sequence_number;
+
+            throw rtp_sequence_error("aaa");
         }
+    }
+    bool dest_packt() {
+
+        auto pkt_size = recv_buf.pop(use_buf);
+
+        if (!(use_buf[0] & 0x80)) { return false; }
+
+        this->rtp_header.set_ptr(use_buf);
+        this->payload_header.set_ptr(use_buf + rtp_header.get_header_length());
+
+        pre_sequence_number = 0;
+
+        return !static_cast<bool>(payload_header.get_MH());
     }
 
 private:
