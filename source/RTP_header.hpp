@@ -129,12 +129,11 @@ public:
     }
     bool dest_packt() {
 
-        auto pkt_size = recv_buf.pop(use_buf);
+        recv_buf.pop(use_buf);
 
         if (!(use_buf[0] & 0x80)) { return false; }
 
-        this->rtp_header.set_ptr(use_buf);
-        this->payload_header.set_ptr(use_buf + rtp_header.get_header_length());
+        this->payload_header.set_ptr(use_buf + RTPHeader::get_header_length());
 
         pre_sequence_number = 0;
 

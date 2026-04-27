@@ -149,6 +149,7 @@ int main(int argc, char** argv) {
 
     printf("finish diff: %ld\n", analysis_finish - receive_finish);
     printf("analysis frame: %ld\n", analysis_frame);
+    printf("lost frame: %ld\n", loss_frame);
 
     return 0;
 }
