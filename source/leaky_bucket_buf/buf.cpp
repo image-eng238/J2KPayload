@@ -7,7 +7,7 @@
 #define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
 
 leaky_bucket_buf::leaky_bucket_buf()
-    : next_write{buf_list}, next_pop{buf_list}, udp{}, current_num_data{}, buf_list{} {
+    : next_write{buf_list}, next_pop{buf_list}, udp{}, current_num_data{}, mtx{}, cond{}, buf_list{} {
 
     for (size_t i = 0; i < NUM_BUFFER - 1; ++i) {
         buf_list[i].next_ptr = &buf_list[i + 1];
@@ -44,7 +44,10 @@ bool leaky_bucket_buf::receive() {
     memcpy(writing->data, tmp_buf, tmp_data_size);
     writing->data_size = tmp_data_size;
     if (!(writing->data[0] & 0x80)) {
+        std::unique_lock lk(mtx);
         ++current_num_data;
+        lk.unlock();
+        cond.notify_all();
         return false;
     }
 
@@ -53,35 +56,20 @@ bool leaky_bucket_buf::receive() {
 
     next_write = writing->next_ptr;
 
+    std::unique_lock lk(mtx);
     ++current_num_data;
-
+    lk.unlock();
+    cond.notify_all();
     return true;
 }
 
-void leaky_bucket_buf::write(const uint8_t* const src, const size_t& len) {
-    auto& writing = next_write;
-    auto ast      = writing->empty();
-    assert(ast); // ここでプログラムが停止する場合，データの排出が追い付いてない
-    memcpy(writing->data, src, len);
-    writing->data_size = len;
-
-    next_write = writing->next_ptr;
-}
-
-uint8_t* leaky_bucket_buf::pop() {
-    // assert(!next_pop->empty());
-    while (next_pop->empty()); // データの排出が入力より速いため，データが入力されるまで待機
-    auto popping       = next_pop;
-    popping->data_size = 0;
-
-    next_pop = popping->next_ptr;
-    return popping->data;
-}
-
 int leaky_bucket_buf::pop(uint8_t*& ptr) {
-    while (current_num_data.load(std::memory_order_relaxed) <= 0) {
-        std::this_thread::yield();
-    }
+    // while (current_num_data.load(std::memory_order_relaxed) <= 0) {
+    //     std::this_thread::yield();
+    // }
+
+    std::unique_lock lk(mtx);
+    cond.wait(lk, [this] { return current_num_data > 0; });
 
     auto popping       = next_pop;
     auto out           = popping->data_size;
@@ -91,6 +79,7 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     next_pop = popping->next_ptr;
 
     --current_num_data;
+    lk.unlock();
 
     return out;
 }

@@ -21,8 +21,6 @@ public:
 
     constexpr void set_udp(UDPReceiver* const);
     bool receive();
-    void write(const uint8_t* const, const size_t&);
-    uint8_t* pop();
     int pop(uint8_t*&);
     static uint32_t get_seq(const uint8_t* const data) { return (data[0] & 0x80) ? static_cast<uint32_t>(data[15] << 0x10) | static_cast<uint32_t>(data[2] << 0x8) | static_cast<uint32_t>(data[3]) : 0; }
 
@@ -37,7 +35,10 @@ private:
     link_list* next_pop;   // pop からのみアクセス
     UDPReceiver* udp;      // receive のみからアクセス
 
-    std::atomic_size_t current_num_data;
+    size_t current_num_data;
+
+    std::mutex mtx;
+    std::condition_variable cond;
 
     link_list buf_list[NUM_BUFFER];
     // 体感では link_list のメンバに配列をもたせたほうが NUM_BUFFER が小さい値でも安定する(要検証)
