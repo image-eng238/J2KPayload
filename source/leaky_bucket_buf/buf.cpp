@@ -37,23 +37,9 @@ bool leaky_bucket_buf::receive() {
         }
     }
 
-    if (tmp_data_size > 0) {
-        static uint32_t pre_seq = 0;
-        const uint32_t recv_seq = get_seq(tmp_buf);
-        // PRINT_ASSERTION(((recv_seq == pre_seq + 1) || (pre_seq == 0) || (recv_seq == 0)), "now: %d, pre: %d, diff: %d\n", recv_seq, pre_seq, recv_seq - pre_seq);
-        pre_seq                 = recv_seq;
-    }
-
     assert(current_num_data < NUM_BUFFER); // buffer leak
 
     auto& writing = next_write;
-    // assert(writing->empty());
-    // writing->data_size = udp->receive(writing->data, BUFFER_SIZE);
-
-    // static uint32_t pre_seq = 0;
-    // const uint32_t recv_seq = get_seq(writing->data);
-    // PRINT_ASSERTION(((recv_seq == pre_seq + 1) || (pre_seq == 0) || (recv_seq == 0)), "now: %d, pre: %d, diff: %d\n", recv_seq, pre_seq, recv_seq - pre_seq);
-    // pre_seq = recv_seq;
 
     memcpy(writing->data, tmp_buf, tmp_data_size);
     writing->data_size = tmp_data_size;
@@ -93,10 +79,6 @@ uint8_t* leaky_bucket_buf::pop() {
 }
 
 int leaky_bucket_buf::pop(uint8_t*& ptr) {
-    // assert(!next_pop->empty());
-    // while (next_pop->empty()); // データの排出が入力より速いため，データが入力されるまで待機
-
-    // while (current_num_data == 0) {
     while (current_num_data.load(std::memory_order_relaxed) <= 0) {
         std::this_thread::yield();
     }
@@ -109,9 +91,6 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     next_pop = popping->next_ptr;
 
     --current_num_data;
-    // current_num_data.fetch_sub(1, std::memory_order_relaxed);
-    // static size_t c = 0;
-    // printf("      p: %ld\n", c++);
 
     return out;
 }

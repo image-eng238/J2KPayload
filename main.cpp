@@ -69,51 +69,53 @@ int main(int argc, char** argv) {
     std::chrono::steady_clock::time_point analysis_finish;
     std::chrono::steady_clock::time_point receive_finish;
     size_t analysis_frame = 0;
+    size_t loss_frame     = 0;
 
     std::thread consumer([&] {
         MainHeader main_header;
         Tile j2k_tile;
         std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
 
-        bool is_packet_error = false;
+        printf("analysis thread ready...\n");
+        while (true) {
+            try {
+                if (!rtp_recv.receive()) break;
+                auto& j2kpayload    = rtp_recv.access_payload();
+                auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
+                auto& pkt_data_size = rtp_recv.access_pkt_data_size();
 
-        printf("analysis thread ready\n");
-        while (rtp_recv.receive()) {
+                // decoder
+                if (j2kpayload.get_MH() == 0) { // body packet
 
-            auto& j2kpayload    = rtp_recv.access_payload();
-            auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
-            auto& pkt_data_size = rtp_recv.access_pkt_data_size();
-
-            // decoder
-            if (j2kpayload.get_MH() == 0) { // body packet
-
-                if (is_packet_error) continue;
-
-                J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
-                size_t loop_count = 0;
-                for (auto& p : j2k_packet_table) {
-                    if (read_packet(p, buf)) {
-                        // エラーが出た場合，メインパケットの出現までパケットを捨てる
-                        is_packet_error = true;
-                        break;
-                    }
-                    ++loop_count;
-                }
-
-            } else {
-                if (main_header.empty()) {
                     J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
-                    main_header.read(buf);
-                    j2k_tile.init(main_header, buf);
-                    j2k_tile.read(main_header, j2k_packet_table);
-                    printf("main header read\n");
-                }
-                ++analysis_frame;
+                    size_t loop_count = 0;
+                    for (auto& p : j2k_packet_table) {
+                        read_packet(p, buf);
+                        ++loop_count;
+                    }
+
+                } else {
+                    if (main_header.empty()) {
+                        J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
+                        main_header.read(buf);
+                        j2k_tile.init(main_header, buf);
+                        j2k_tile.read(main_header, j2k_packet_table);
+                        printf("main header read\n");
+                    }
+                    ++analysis_frame;
 #ifdef GENERATE_FRAME
-                if (analysis_frame % 10 == 0) {
-                    printf("analysis_frame: %ld\n", analysis_frame);
-                }
+                    if (analysis_frame % 100 == 0) {
+                        printf("analysis_frame: %ld\n", analysis_frame);
+                    }
 #endif
+                }
+            } catch (rtp_sequence_error& e) {
+                // メインパケットの出現までパケットを破棄
+                // 将来的には timestanp で制御
+                while (rtp_recv.dest_packt()) {
+                    std::this_thread::yield();
+                }
+                ++loss_frame;
             }
 
             std::this_thread::yield();
@@ -130,7 +132,7 @@ int main(int argc, char** argv) {
     auto& r = rtp_recv.access_recv_buf();
     std::thread produser([&r, &receive_finish, &start_time]() {
         // std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        printf("receive thread ready\n");
+        printf("receive thread ready...\n");
         // while (true) {
         //     if (!r.receive()) break;
         //     // std::this_thread::sleep_for(std::chrono::microseconds(10));
@@ -147,6 +149,7 @@ int main(int argc, char** argv) {
 
     printf("finish diff: %ld\n", analysis_finish - receive_finish);
     printf("analysis frame: %ld\n", analysis_frame);
+    printf("lost frame: %ld\n", loss_frame);
 
     return 0;
 }
