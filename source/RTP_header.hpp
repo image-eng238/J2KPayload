@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdio>
 #include <exception>
+#include <thread>
 #define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
 
 #include "UDP.hpp"
@@ -124,6 +125,7 @@ public:
             pkt_data_size       = 0;
             pre_sequence_number = extended_sequence_number;
 
+            std::this_thread::yield();
             throw rtp_sequence_error("packet loss");
         }
     }

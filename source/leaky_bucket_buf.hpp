@@ -14,7 +14,7 @@ class leaky_bucket_buf {
 
 public:
     static constexpr size_t BUFFER_SIZE = 1384;
-    static constexpr size_t NUM_BUFFER  = 3000;
+    static constexpr size_t NUM_BUFFER  = 5000;
 
     leaky_bucket_buf();
     leaky_bucket_buf(UDPReceiver* const);
@@ -35,7 +35,8 @@ private:
     link_list* next_pop;   // pop からのみアクセス
     UDPReceiver* udp;      // receive のみからアクセス
 
-    size_t current_num_data;
+    size_t current_num_data; // 双方からアクセス 同期処理を行う
+    size_t tmp_num_data;
 
     std::mutex mtx;
     std::condition_variable cond;

@@ -7,7 +7,7 @@
 #define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
 
 leaky_bucket_buf::leaky_bucket_buf()
-    : next_write{buf_list}, next_pop{buf_list}, udp{}, current_num_data{}, mtx{}, cond{}, buf_list{} {
+    : next_write{buf_list}, next_pop{buf_list}, udp{}, current_num_data{}, tmp_num_data{}, mtx{}, cond{}, buf_list{} {
 
     for (size_t i = 0; i < NUM_BUFFER - 1; ++i) {
         buf_list[i].next_ptr = &buf_list[i + 1];
@@ -37,30 +37,30 @@ bool leaky_bucket_buf::receive() {
         }
     }
 
+    std::unique_lock lk(mtx, std::defer_lock);
     assert(current_num_data < NUM_BUFFER); // buffer leak
 
     auto& writing = next_write;
 
     memcpy(writing->data, tmp_buf, tmp_data_size);
     writing->data_size = tmp_data_size;
-    if (!(writing->data[0] & 0x80)) {
-        std::unique_lock lk(mtx);
-        ++current_num_data;
-        lk.unlock();
-        cond.notify_all();
-        return false;
-    }
+
+    bool output = writing->data[0] & 0x80;
 
     // ここで writing と next_ptr の順序を確認し，ソートする．
     // RTP の場合はシーケンス番号をチェックしてソート．
 
     next_write = writing->next_ptr;
 
-    std::unique_lock lk(mtx);
-    ++current_num_data;
-    lk.unlock();
+    if (lk.try_lock()) {
+        current_num_data += tmp_num_data + 1;
+        if (tmp_num_data != 0) tmp_num_data = 0;
+        lk.unlock();
+    } else {
+        ++tmp_num_data;
+    }
     cond.notify_all();
-    return true;
+    return output;
 }
 
 int leaky_bucket_buf::pop(uint8_t*& ptr) {

@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
         //     // std::this_thread::sleep_for(std::chrono::microseconds(10));
         // }
         while (r.receive()) {
-            // std::this_thread::yield();
+            std::this_thread::yield();
         }
         receive_finish = std::chrono::steady_clock::now();
         printf("receive finish: %ld\n", receive_finish - start_time);
