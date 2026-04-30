@@ -48,7 +48,8 @@ int main(int argc, char** argv) {
         }
         if (siz == -1) continue;
         if (siz == 1) break;
-        auto sq = leaky_bucket_buf::get_seq(recv_buf);
+        // auto sq = leaky_bucket_buf::get_seq(recv_buf);
+        auto sq = RTPReceiver::get_extended_sequence_number(recv_buf);
         // assert(sq == pre + 1 || pre == 0);
         if (!(sq == pre + 1 || pre == 0)) {
             printf("%d", sq);

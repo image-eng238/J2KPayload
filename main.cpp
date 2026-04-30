@@ -119,9 +119,7 @@ int main(int argc, char** argv) {
             } catch (rtp_sequence_error& e) {
                 // メインパケットの出現までパケットを破棄
                 // 将来的には timestanp で制御
-                while (rtp_recv.dest_packt()) {
-                    std::this_thread::yield();
-                }
+                rtp_recv.dest_packt();
                 ++loss_frame;
             }
 

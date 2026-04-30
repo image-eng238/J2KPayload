@@ -11,9 +11,11 @@ leaky_bucket_buf::leaky_bucket_buf()
 
     for (size_t i = 0; i < NUM_BUFFER - 1; ++i) {
         buf_list[i].next_ptr = &buf_list[i + 1];
+        // buf_list[i].data_size = 0;
         // buf_list[i].data     = &buffer[i * BUFFER_SIZE];
     }
     buf_list[NUM_BUFFER - 1].next_ptr = buf_list;
+    // buf_list[NUM_BUFFER - 1].data_size = 0;
     // buf_list[NUM_BUFFER - 1].data     = &buffer[(NUM_BUFFER - 1) * BUFFER_SIZE];
 }
 leaky_bucket_buf::leaky_bucket_buf(UDPReceiver* const ptr) : leaky_bucket_buf{} {
@@ -40,6 +42,7 @@ bool leaky_bucket_buf::receive() {
     // assert(current_num_data + tmp_num_data < NUM_BUFFER); // buffer leak
 
     auto& writing = next_write;
+    // assert(writing->empty());
 
     // memcpy(writing->data, tmp_buf, tmp_data_size);
     // writing->data_size = tmp_data_size;
@@ -94,15 +97,4 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     lk.unlock();
 
     return out;
-}
-
-size_t leaky_bucket_buf::dest() {
-    std::unique_lock lk(mtx, std::defer_lock);
-    // while (true) {
-    //     lk.lock();
-    //     cond.wait(lk, [this] { return current_num_data > 0; });
-    //     size_t num_data = current_num_data;
-    //     lk.unlock();
-    // }
-    return 0;
 }

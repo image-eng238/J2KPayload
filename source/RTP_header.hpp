@@ -98,6 +98,7 @@ public:
 
     uint8_t* get_use_buf() const { return use_buf; }
     uint32_t get_extended_sequence_number() const { return (payload_header.get_ESEQ() << 16) | rtp_header.get_sequence_number(); }
+    static uint32_t get_extended_sequence_number(const uint8_t* const data) { return static_cast<uint32_t>(data[15] << 0x10) | static_cast<uint32_t>(data[2] << 0x8) | static_cast<uint32_t>(data[3]); }
 
     bool sock_bind() { return udp.sock_bind(); }
     bool sock_bind(const char* const address, const uint16_t port) { return udp.sock_bind(address, port); }
@@ -120,7 +121,7 @@ public:
 
             return true;
         } else {
-            printf("RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d\n", pre_sequence_number, extended_sequence_number, extended_sequence_number - (pre_sequence_number + 1));
+            fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, ", pre_sequence_number, extended_sequence_number, extended_sequence_number - (pre_sequence_number + 1));
             pkt_data_ptr        = nullptr;
             pkt_data_size       = 0;
             pre_sequence_number = extended_sequence_number;
@@ -130,16 +131,10 @@ public:
         }
     }
     bool dest_packt() {
-
-        recv_buf.pop(use_buf);
-
-        if (!(use_buf[0] & 0x80)) { return false; }
-
-        this->payload_header.set_ptr(use_buf + RTPHeader::get_header_length());
-
+        auto dest_packet    = recv_buf.dest([](const uint8_t* const data) { return static_cast<bool>(data[RTPHeader::get_header_length()] & 0xC0); });
         pre_sequence_number = 0;
-
-        return !static_cast<bool>(payload_header.get_MH());
+        fprintf(stderr, "discarded packsts: %ld\n", dest_packet);
+        return true;
     }
 
 private:
