@@ -55,7 +55,7 @@ void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_
     uint16_t cap   = 35;
 
     // ここのメモリアクセスに改善の余地あり キャシュに乗ってないためメモリまで探しに行ってる
-    CodeBlock* const current_block = codeblock;
+    CodeBlock* const current_block = this->codeblock;
 
     if (buf->get_bit()) {
         current_block->number_of_zbp = [&] {

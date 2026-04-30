@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
         //     // std::this_thread::sleep_for(std::chrono::microseconds(10));
         // }
         while (r.receive()) {
-            // std::this_thread::yield();
+            std::this_thread::yield();
         }
         receive_finish = std::chrono::steady_clock::now();
         printf("receive finish: %ld\n", receive_finish - start_time);
@@ -162,9 +162,12 @@ int main(int argc, char** argv) {
 }
 
 int read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf) {
+    // Precinct::get_number_of_subband() のメモリアクセスがボトルネック
+    // 実際には current_precinct の実体がキャッシュに乗っていないため，
+    // 一回目のアクセスに時間がかかる
     static size_t call_count = 0;
     call_count++;
-    if (!payload_buf.get_bit()) { // empty packet
+    if (unlikely(!payload_buf.get_bit())) { // empty packet
         std::cout << "empty packet, call_count: " << call_count << std::endl;
         return 1;
     }
