@@ -1,4 +1,5 @@
 #include "leaky_bucket_buf.hpp"
+#include "opt_macro.hpp"
 
 #include <cstring>
 #include <cassert>
@@ -48,7 +49,7 @@ bool leaky_bucket_buf::receive() {
     // writing->data_size = tmp_data_size;
     writing->data_size = static_cast<int>(udp->receive(writing->data, BUFFER_SIZE));
     if (writing->data_size == -1) {
-        if (errno == EAGAIN) {
+        if (likely(errno == EAGAIN)) {
             return true;
         } else {
             perror("receive error");
@@ -74,7 +75,7 @@ bool leaky_bucket_buf::receive() {
         // スレッドセーフでないが current_num_data は他スレッドから操作は減算のみであるためアサーションに使用
         assert(current_num_data + tmp_num_data < NUM_BUFFER);
     }
-    cond.notify_all();
+    cond.notify_one();
     return output;
 }
 

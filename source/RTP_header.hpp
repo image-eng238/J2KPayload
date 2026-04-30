@@ -11,6 +11,7 @@
 #include "UDP.hpp"
 #include "buffer_pool.hpp"
 #include "leaky_bucket_buf.hpp"
+#include "opt_macro.hpp"
 
 class rtp_sequence_error : public std::runtime_error {
 public:
@@ -107,14 +108,14 @@ public:
 
         auto pkt_size = recv_buf.pop(use_buf);
 
-        if (!(use_buf[0] & 0x80)) { return false; }
+        if (unlikely(!(use_buf[0] & 0x80))) { return false; }
 
         this->rtp_header.set_ptr(use_buf);
         this->payload_header.set_ptr(use_buf + rtp_header.get_header_length());
 
         uint32_t extended_sequence_number = get_extended_sequence_number();
 
-        if ((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (extended_sequence_number == 0)) {
+        if (likely((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (extended_sequence_number == 0))) {
             pkt_data_ptr        = use_buf + rtp_header.get_header_length() + payload_header.get_header_length();
             pkt_data_size       = pkt_size - (rtp_header.get_header_length() + payload_header.get_header_length());
             pre_sequence_number = extended_sequence_number;

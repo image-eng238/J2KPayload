@@ -25,6 +25,8 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 #include "decoding.hpp"
 #include "const_value.hpp"
 
+#include "opt_macro.hpp"
+
 #include <vector>
 #include <string_view>
 #include <charconv>
@@ -86,13 +88,13 @@ int main(int argc, char** argv) {
         printf("analysis thread ready...\n");
         while (true) {
             try {
-                if (!rtp_recv.receive()) break;
+                if (unlikely(!rtp_recv.receive())) break;
                 auto& j2kpayload    = rtp_recv.access_payload();
                 auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
                 auto& pkt_data_size = rtp_recv.access_pkt_data_size();
 
                 // decoder
-                if (j2kpayload.get_MH() == 0) { // body packet
+                if (likely(j2kpayload.get_MH() == 0)) { // body packet
 
                     J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
                     size_t loop_count = 0;
@@ -102,7 +104,7 @@ int main(int argc, char** argv) {
                     }
 
                 } else {
-                    if (main_header.empty()) {
+                    if (unlikely(main_header.empty())) {
                         J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
                         main_header.read(buf);
                         j2k_tile.init(main_header, buf);
@@ -123,7 +125,7 @@ int main(int argc, char** argv) {
                 ++loss_frame;
             }
 
-            std::this_thread::yield();
+            // std::this_thread::yield();
         }
         analysis_finish = std::chrono::steady_clock::now();
         printf("analysis finish: %ld\n", analysis_finish - start_time);
@@ -143,7 +145,7 @@ int main(int argc, char** argv) {
         //     // std::this_thread::sleep_for(std::chrono::microseconds(10));
         // }
         while (r.receive()) {
-            std::this_thread::yield();
+            // std::this_thread::yield();
         }
         receive_finish = std::chrono::steady_clock::now();
         printf("receive finish: %ld\n", receive_finish - start_time);
@@ -168,7 +170,9 @@ int read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf) {
     }
 
     PrecinctSubband* current_ps;
-    for (uint8_t i = 0; i < current_precinct->get_number_of_subband(); ++i) {
+    const uint8_t num_subband = current_precinct->get_number_of_subband();
+    assume(num_subband <= 3);
+    for (uint8_t i = 0; i < num_subband; ++i) {
         current_ps = current_precinct->get_psubband_ptr(i);
 #ifdef GENERATE_LOG
         current_ps->read_packet_header(&payload_buf, current_precinct->get_resolution_level());
@@ -179,7 +183,7 @@ int read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf) {
     payload_buf.check_FF();
     payload_buf.r_fill();
 
-    for (uint8_t i = 0; i < current_precinct->get_number_of_subband(); ++i) {
+    for (uint8_t i = 0; i < num_subband; ++i) {
         current_ps = current_precinct->get_psubband_ptr(i);
         current_ps->get_codeblock_ptr(0)->set_data(&payload_buf);
     }

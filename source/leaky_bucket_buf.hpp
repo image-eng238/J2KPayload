@@ -27,9 +27,9 @@ public:
 
 private:
     struct link_list {
+        uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
         link_list* next_ptr;
         int data_size;
-        uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
         bool empty() const { return data_size <= 0; }
     };
     link_list* next_write; // receive からのみアクセス

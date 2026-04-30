@@ -189,8 +189,8 @@ private:
     uint32_t index;
 
     /*1, 1*/
-    uint8_t resolution_level;
     uint8_t number_of_subband;
+    uint8_t resolution_level;
 };
 class Resolution : public ReferenceGrid {
 public:
