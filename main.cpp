@@ -43,7 +43,8 @@ int main(int argc, char** argv) {
     }
 
     std::string_view addr;
-    uint16_t port = 0;
+    uint16_t port    = 0;
+    size_t out_flame = 100;
     for (auto it = arg_view.begin(); it != arg_view.end(); ++it) {
 
         if (*it == "-a") {
@@ -54,6 +55,12 @@ int main(int argc, char** argv) {
             it++;
             if (std::from_chars(it->begin(), it->end(), port).ptr != it->end()) {
                 port = 0;
+            }
+        }
+        if (*it == "-f") {
+            it++;
+            if (std::from_chars(it->begin(), it->end(), out_flame).ptr != it->end()) {
+                out_flame = 100;
             }
         }
     }
@@ -104,7 +111,7 @@ int main(int argc, char** argv) {
                     }
                     ++analysis_frame;
 #ifdef GENERATE_FRAME
-                    if (analysis_frame % 100 == 0) {
+                    if (out_flame != 0 && analysis_frame % out_flame == 0) {
                         printf("analysis_frame: %ld\n", analysis_frame);
                     }
 #endif

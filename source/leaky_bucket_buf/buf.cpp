@@ -25,10 +25,26 @@ constexpr void leaky_bucket_buf::set_udp(UDPReceiver* const ptr) {
 }
 
 bool leaky_bucket_buf::receive() {
-    uint8_t tmp_buf[BUFFER_SIZE];
-    int tmp_data_size = udp->receive(tmp_buf, BUFFER_SIZE);
+    // uint8_t tmp_buf[BUFFER_SIZE];
+    // int tmp_data_size = udp->receive(tmp_buf, BUFFER_SIZE);
 
-    if (tmp_data_size == -1) {
+    // if (tmp_data_size == -1) {
+    //     if (errno == EAGAIN) {
+    //         return true;
+    //     } else {
+    //         perror("receive error");
+    //         return false;
+    //     }
+    // }
+
+    // assert(current_num_data + tmp_num_data < NUM_BUFFER); // buffer leak
+
+    auto& writing = next_write;
+
+    // memcpy(writing->data, tmp_buf, tmp_data_size);
+    // writing->data_size = tmp_data_size;
+    writing->data_size = static_cast<int>(udp->receive(writing->data, BUFFER_SIZE));
+    if (writing->data_size == -1) {
         if (errno == EAGAIN) {
             return true;
         } else {
@@ -37,14 +53,6 @@ bool leaky_bucket_buf::receive() {
         }
     }
 
-    std::unique_lock lk(mtx, std::defer_lock);
-    assert(current_num_data < NUM_BUFFER); // buffer leak
-
-    auto& writing = next_write;
-
-    memcpy(writing->data, tmp_buf, tmp_data_size);
-    writing->data_size = tmp_data_size;
-
     bool output = writing->data[0] & 0x80;
 
     // ここで writing と next_ptr の順序を確認し，ソートする．
@@ -52,12 +60,16 @@ bool leaky_bucket_buf::receive() {
 
     next_write = writing->next_ptr;
 
+    std::unique_lock lk(mtx, std::defer_lock);
     if (lk.try_lock()) {
-        current_num_data += tmp_num_data + 1;
+        current_num_data += 1 + tmp_num_data;
         if (tmp_num_data != 0) tmp_num_data = 0;
+        assert(current_num_data < NUM_BUFFER);
         lk.unlock();
     } else {
         ++tmp_num_data;
+        // スレッドセーフでないが current_num_data は他スレッドから操作は減算のみであるためアサーションに使用
+        assert(current_num_data + tmp_num_data < NUM_BUFFER);
     }
     cond.notify_all();
     return output;
@@ -82,4 +94,15 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     lk.unlock();
 
     return out;
+}
+
+size_t leaky_bucket_buf::dest() {
+    std::unique_lock lk(mtx, std::defer_lock);
+    // while (true) {
+    //     lk.lock();
+    //     cond.wait(lk, [this] { return current_num_data > 0; });
+    //     size_t num_data = current_num_data;
+    //     lk.unlock();
+    // }
+    return 0;
 }

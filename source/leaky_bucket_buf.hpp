@@ -22,7 +22,8 @@ public:
     constexpr void set_udp(UDPReceiver* const);
     bool receive();
     int pop(uint8_t*&);
-    static uint32_t get_seq(const uint8_t* const data) { return (data[0] & 0x80) ? static_cast<uint32_t>(data[15] << 0x10) | static_cast<uint32_t>(data[2] << 0x8) | static_cast<uint32_t>(data[3]) : 0; }
+    size_t dest();
+    static uint32_t get_seq(const uint8_t* const data) { return static_cast<uint32_t>(data[15] << 0x10) | static_cast<uint32_t>(data[2] << 0x8) | static_cast<uint32_t>(data[3]); }
 
 private:
     struct link_list {
