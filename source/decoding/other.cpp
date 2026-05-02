@@ -2,19 +2,19 @@
 #include <cmath>
 #include <iostream>
 
-CodeBlock::CodeBlock() : size{}, length(0), cmode(0), number_of_layer(0), number_of_coding_passes(0), number_of_zbp(0), fast_skep_passes(0), lblock(0), band(0), is_set(false) {}
+// CodeBlock::CodeBlock() : size{}, length(0), cmode(0), number_of_layer(0), number_of_coding_passes(0), number_of_zbp(0), fast_skep_passes(0), lblock(0), band(0), is_set(false) {}
 void CodeBlock::init(const pos2D& cb_pos0, const pos2D& cb_pos1, const pos2D& siz, const uint8_t cstyle, const uint8_t b) {
-    pos0            = cb_pos0;
-    pos1            = cb_pos1;
-    size            = siz;
-    cmode           = cstyle;
-    number_of_layer = 1;
-    band            = b;
+    pos0 = cb_pos0;
+    pos1 = cb_pos1;
+    size = siz;
+    // cmode           = cstyle;
+    // number_of_layer = 1;
+    band = b;
 
     // path_length.resize(layer);
 }
 void CodeBlock::set_data(J2kBuf* const buf) {
-    is_set = true;
+    // is_set = true;
     if (++CodeBlock::buffer_pos == CodeBlock::NUM_BUFFER) {
         buffer_pos = 0;
     }
@@ -23,14 +23,14 @@ void CodeBlock::set_data(J2kBuf* const buf) {
     // buf->step(length);
 }
 void CodeBlock::reuse() {
-    is_set         = false;
+    // is_set         = false;
     codeblock_data = nullptr;
 
-    length                  = 0;
-    number_of_coding_passes = 0;
-    number_of_zbp           = 0;
-    fast_skep_passes        = 0;
-    lblock                  = 0;
+    length        = 0;
+    // number_of_coding_passes = 0;
+    number_of_zbp = 0;
+    // fast_skep_passes        = 0;
+    // lblock                  = 0;
 }
 
 void PrecinctSubband::init(const pos2D& ps_pos0, const pos2D& ps_pos1, const pos2D& csiz, const uint8_t csl, const uint8_t spos, DecoMem* decoding_mem) {
@@ -87,12 +87,12 @@ void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_
         // 例えば、パス数が10の場合、9を減算して、1つのパスを作成します。
         // OpenJPH ojph_precinct.cpp : 466 より引用
 
-        current_block->lblock = 3;
-        // while (buf->get_bit()) current_block->lblock++; // 値を観察すると 8 までしか出現してない
+        uint8_t lblock = 3;
+        // while (buf->get_bit()) lblock++; // 値を観察すると 8 までしか出現してない
 
         for (uint8_t i = 0; i < 15; ++i) {
             if (buf->get_bit()) {
-                current_block->lblock++;
+                lblock++;
             } else {
                 break;
             }
@@ -108,26 +108,26 @@ void PrecinctSubband::read_packet_header(J2kBuf* const buf, const uint8_t debug_
         num_phld_passes *= 3;
         new_pass -= num_phld_passes;
 
-        uint32_t bits_to_read_test = current_block->lblock; // 大きくても 13 まで？
+        uint32_t bits_to_read_test = lblock; // 大きくても 13 まで？
         uint32_t segment_byte_test = buf->get_bit(bits_to_read_test);
         assert(segment_byte_test > 1);
         current_block->length = segment_byte_test;
 
         if (new_pass > 1) {
-            bits_to_read_test = current_block->lblock + (new_pass > 2 ? 1 : 0);
+            bits_to_read_test = lblock + (new_pass > 2 ? 1 : 0);
             segment_byte_test = buf->get_bit(bits_to_read_test);
             current_block->length += segment_byte_test;
         }
         [[maybe_unused]] volatile auto opt = current_block->length;
 #if defined(GENERATE_LOG)
-        printf("%d,%d,%d\n", debug_resolution, band_pos, current_block->length);
+        printf("%d,%d,%d\n", debug_resolution, this->band_pos, current_block->length);
         // std::cout << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << "," << current_block->length << std::endl;
         // std::cout << static_cast<uint32_t>(0) << "," << static_cast<uint32_t>(band_pos) << "," << current_block->length << std::endl;
 #endif
     } else {
         current_block->reuse();
 #if defined(GENERATE_LOG)
-        printf("%d,%d,0\n", debug_resolution, band_pos);
+        printf("%d,%d,0\n", debug_resolution, this->band_pos);
         // std::cout << std::dec << ++call_count << ": " << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << ",0" << std::endl;
         // std::cout << static_cast<uint32_t>(debug_resolution) << "," << static_cast<uint32_t>(band_pos) << ",0" << std::endl;
 #endif
@@ -245,3 +245,84 @@ bool Resolution::empty() const { return is_empty; }
 uint8_t Resolution::get_number_of_subband() const { return number_of_subband; }
 pos2D Resolution::get_precinct_count() const { return precinct_count; }
 Precinct* Resolution::get_precinct_ptr(const uint32_t p) const { return &precinct[p]; }
+
+void CodeBlock::read_packet_header(J2kBuf* const buf, const uint8_t debug_band_pos, const uint8_t debug_resolution) {
+
+    [[maybe_unused]] static size_t call_count = 0;
+    ++call_count;
+
+    // ここのメモリアクセスに改善の余地あり キャシュに乗ってないためメモリまで探しに行ってる
+    CodeBlock* const current_block = this;
+
+    if (buf->get_bit()) {
+        current_block->number_of_zbp = [&] {
+            uint8_t bits = 0;
+            while (!buf->get_bit()) ++bits;
+            return bits;
+        }();
+        // 符号化パス数を読む
+        uint32_t new_pass = 1;
+        new_pass += buf->get_bit();
+        if (new_pass >= 2) {
+            new_pass += buf->get_bit();
+            if (new_pass >= 3) {
+                new_pass += buf->get_bit(2);
+                if (new_pass >= 6) {
+                    new_pass += buf->get_bit(5);
+                    if (unlikely(new_pass >= 37)) {
+                        new_pass += buf->get_bit(7);
+                    }
+                }
+            }
+        }
+
+        // 解析パスの長さ
+        // パス数が1の場合、長さは1つです。
+        // パス数が2または3の場合、長さは2つです。
+        // パス数が3より大きい場合、プレースホルダーパスが存在します。
+        // この場合、パス数から3の倍数を減算します。
+        // 例えば、パス数が10の場合、9を減算して、1つのパスを作成します。
+        // OpenJPH ojph_precinct.cpp : 466 より引用
+
+        uint8_t lblock = 3;
+        // while (buf->get_bit()) lblock++; // 値を観察すると 8 までしか出現してない
+
+        for (uint8_t i = 0; i < 15; ++i) {
+            if (buf->get_bit()) {
+                lblock++;
+            } else {
+                break;
+            }
+        }
+
+        // OpenJPH の挙動を見ると，1回 segment_byte を buf から取得した後，符号化パス数が2以上の場合，もう一度 segment_byte を読む必要がある？
+        // また，符号化パス数が3以上なら，Lblockをインクリメントするかも
+        // codeblock にデータを渡すときは，1回目の segment_byte + 2回目の segment_byte が codeblock のデータの大きさになる
+
+        uint32_t num_phld_passes = (new_pass - 1) / 3;
+        current_block->number_of_zbp += num_phld_passes;
+
+        num_phld_passes *= 3;
+        new_pass -= num_phld_passes;
+
+        uint32_t bits_to_read_test = lblock; // 大きくても 13 まで？
+        uint32_t segment_byte_test = buf->get_bit(bits_to_read_test);
+        assert(segment_byte_test > 1);
+        current_block->length = segment_byte_test;
+
+        if (new_pass > 1) {
+            bits_to_read_test = lblock + (new_pass > 2 ? 1 : 0);
+            segment_byte_test = buf->get_bit(bits_to_read_test);
+            current_block->length += segment_byte_test;
+        }
+        [[maybe_unused]] volatile auto opt = current_block->length;
+#if defined(GENERATE_LOG)
+        printf("%d,%d,%d\n", debug_resolution, debug_band_pos, current_block->length);
+#endif
+    } else {
+        current_block->reuse();
+#if defined(GENERATE_LOG)
+        printf("%d,%d,0\n", debug_resolution, debug_band_pos);
+#endif
+    }
+}

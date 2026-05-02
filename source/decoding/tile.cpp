@@ -5,6 +5,7 @@
 
 #include "decoding.hpp"
 #include "codestream.hpp"
+#include "fast_table.hpp"
 
 pos2D ReferenceGrid::get_pos0() const { return pos0; }
 pos2D ReferenceGrid::get_pos1() const { return pos1; }
@@ -205,7 +206,7 @@ pos2D Tile::get_min_precinct_size() const {
     return out;
 }
 
-void Tile::read(const MainHeader& mhd, std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz>& table) {
+void Tile::read(const MainHeader& mhd, std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz>& table) {
     // for (uint16_t c = 0; c < number_of_component; ++c) {
     //     tile_component[c].set_resolution(&decoding_mem);
     // }
@@ -371,8 +372,8 @@ void Tile::read(const MainHeader& mhd, std::array<Precinct*, ConstValue::num_pre
                                         if (!is_packet_read[l][r][c][p]) {
                                             is_packet_read[l][r][c][p] = true;
                                             // std::cout << "--- y: " << y << ", x: " << x << std::endl;
-                                            table[table_index++]       = current_precinct_ptr;
-                                            assert(table_index <= ConstValue::num_precinct * ConstValue::Csiz);
+                                            table[table_index++].set(current_precinct_ptr);
+                                            // assert(table_index <= ConstValue::num_precinct * ConstValue::Csiz);
                                         }
                                     }
                                     x_count[c][r] += 1;

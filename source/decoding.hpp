@@ -3,6 +3,8 @@
 #include "multi_memory.hpp"
 #include "const_value.hpp"
 
+struct fast_table;
+
 class TagTree;
 class TagTreeNode;
 class ReferenceGrid;
@@ -92,10 +94,17 @@ public:
     // friend void PrecinctSubband::read_packet_header(J2kBuf*, uint16_t, uint16_t, uint8_t);
     friend class PrecinctSubband;
 
-    CodeBlock();
+    CodeBlock() : size{}, length(0), number_of_zbp(0), band(0) {}
     void init(const pos2D&, const pos2D&, const pos2D&, const uint8_t, const uint8_t);
     void set_data(J2kBuf* const);
     void reuse();
+    void copy_pos(const CodeBlock& in) {
+        this->pos0 = in.pos0;
+        this->pos1 = in.pos1;
+        this->size = in.size;
+        this->band = in.band;
+    }
+    void read_packet_header(J2kBuf* const buf, const uint8_t = 0, const uint8_t = 0);
 
 private:
     /*16, 8*/
@@ -109,16 +118,16 @@ private:
     uint32_t length;
 
     /*2, 2*/
-    uint16_t cmode;
-    uint16_t number_of_layer;
+    // uint16_t cmode;
+    // uint16_t number_of_layer;
 
     /*1, 1*/
-    uint8_t number_of_coding_passes;
+    // uint8_t number_of_coding_passes;
     uint8_t number_of_zbp;
-    uint8_t fast_skep_passes;
-    uint8_t lblock;
+    // uint8_t fast_skep_passes;
+    // uint8_t lblock;
     uint8_t band;
-    bool is_set;
+    // bool is_set;
 
     // std::vector<uint32_t> path_length;
 
@@ -279,7 +288,7 @@ private:
 class Tile : public ReferenceGrid {
 public:
     void init(const MainHeader&, J2kBuf&);
-    void read(const MainHeader&, std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz>&);
+    void read(const MainHeader&, std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz>&);
     void read_packet(const Precinct*, const uint16_t, const uint8_t, const uint8_t = 0);
     void read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf);
     void setCOD(const COD&);
