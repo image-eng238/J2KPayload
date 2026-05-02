@@ -148,6 +148,7 @@ public:
     void read_packet_header(J2kBuf* const, const uint8_t = 0);
     pos2D get_number_of_codeblock() const;
     CodeBlock* get_codeblock_ptr(const uint32_t) const;
+    uint8_t get_band_pos() const { return band_pos; }
 
 private:
     /*8, 8*/
