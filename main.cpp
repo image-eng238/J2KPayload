@@ -76,8 +76,9 @@ int main(int argc, char** argv) {
         rtp_recv.sock_bind(addr.data(), port);
     }
 
-    std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point analysis_start;
     std::chrono::steady_clock::time_point analysis_finish;
+    std::chrono::steady_clock::time_point receive_start;
     std::chrono::steady_clock::time_point receive_finish;
     size_t analysis_frame = 0;
     size_t loss_frame     = 0;
@@ -88,6 +89,7 @@ int main(int argc, char** argv) {
         // std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
         std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
 
+        analysis_start = std::chrono::steady_clock::now();
         printf("analysis thread ready...\n");
         while (true) {
             try {
@@ -113,7 +115,7 @@ int main(int argc, char** argv) {
                         main_header.read(buf);
                         j2k_tile.init(main_header, buf);
                         j2k_tile.read(main_header, j2k_packet_table);
-                        printf("main header read\n");
+                        printf("main header read, seq: %d\n", rtp_recv.get_extended_sequence_number());
                     }
                     ++analysis_frame;
 #ifdef GENERATE_FRAME
@@ -125,14 +127,15 @@ int main(int argc, char** argv) {
             } catch (rtp_sequence_error& e) {
                 // メインパケットの出現までパケットを破棄
                 // 将来的には timestanp で制御
-                rtp_recv.dest_packt();
+                auto dest_packet = rtp_recv.dest_packt();
+                fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet);
                 ++loss_frame;
             }
 
             // std::this_thread::yield();
         }
         analysis_finish = std::chrono::steady_clock::now();
-        printf("analysis finish: %ld\n", analysis_finish - start_time);
+        printf("analysis finish: %ld\n", (analysis_finish - analysis_start).count());
     });
     // std::thread consumer([&] {
     //     while (rtp_recv.receive()) {
@@ -141,8 +144,8 @@ int main(int argc, char** argv) {
     // });
 
     auto& r = rtp_recv.access_recv_buf();
-    std::thread produser([&r, &receive_finish, &start_time]() {
-        // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::thread produser([&r, &receive_start, &receive_finish]() {
+        receive_start = std::chrono::steady_clock::now();
         printf("receive thread ready...\n");
         // while (true) {
         //     if (!r.receive()) break;
@@ -152,13 +155,16 @@ int main(int argc, char** argv) {
             std::this_thread::yield();
         }
         receive_finish = std::chrono::steady_clock::now();
-        printf("receive finish: %ld\n", receive_finish - start_time);
+        printf("receive finish: %ld\n", (receive_finish - receive_start).count());
     });
 
     consumer.join();
     produser.join();
 
-    printf("finish diff: %ld\n", analysis_finish - receive_finish);
+    auto diff = ((analysis_finish - analysis_start) - (receive_finish - receive_start)).count();
+    if (diff < 0) diff *= -1;
+
+    printf("finish diff: %ld\n", diff);
     printf("analysis frame: %ld\n", analysis_frame);
     printf("lost frame: %ld\n", loss_frame);
 

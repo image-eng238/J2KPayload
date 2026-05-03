@@ -13,9 +13,9 @@
 #include "leaky_bucket_buf.hpp"
 #include "opt_macro.hpp"
 
-class rtp_sequence_error : public std::runtime_error {
-public:
-    explicit rtp_sequence_error(const char* str) : std::runtime_error{str} {}
+struct rtp_sequence_error {
+    uint32_t pre_sq;
+    uint32_t err_sq;
 };
 
 class RTPHeader {
@@ -122,20 +122,27 @@ public:
 
             return true;
         } else {
-            fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, ", pre_sequence_number, extended_sequence_number, extended_sequence_number - (pre_sequence_number + 1));
+            // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, ", pre_sequence_number, extended_sequence_number, extended_sequence_number - (pre_sequence_number + 1));
+            rtp_sequence_error err;
+            err.pre_sq          = pre_sequence_number;
+            err.err_sq          = extended_sequence_number;
             pkt_data_ptr        = nullptr;
             pkt_data_size       = 0;
             pre_sequence_number = extended_sequence_number;
 
             std::this_thread::yield();
-            throw rtp_sequence_error("packet loss");
+            throw err;
         }
     }
-    bool dest_packt() {
-        auto dest_packet    = recv_buf.dest([](const uint8_t* const data) { return static_cast<bool>(data[RTPHeader::get_header_length()] & 0xC0); });
-        pre_sequence_number = 0;
-        fprintf(stderr, "discarded packsts: %ld\n", dest_packet);
-        return true;
+    size_t dest_packt() {
+        // auto dest_packet    = recv_buf.dest([](const uint8_t* const data) { return static_cast<bool>(data[RTPHeader::get_header_length()] & 0xC0); });
+        // pre_sequence_number = 0;
+        auto dest_packet = recv_buf.dest(
+            [](const uint8_t* const data) -> bool { return static_cast<bool>(data[RTPHeader::get_header_length()] & 0xC0); },
+            [this](const uint8_t* const data) -> void { this->pre_sequence_number = RTPReceiver::get_extended_sequence_number(data); }
+        );
+        // fprintf(stderr, "discarded packsts: %ld\n", dest_packet);
+        return dest_packet;
     }
 
 private:
