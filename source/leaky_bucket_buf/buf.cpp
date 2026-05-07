@@ -50,12 +50,14 @@ bool leaky_bucket_buf::receive() {
     writing->data_size = static_cast<int>(udp->receive(writing->data, BUFFER_SIZE));
     if (writing->data_size == -1) {
         if (likely(errno == EAGAIN)) {
+            ++count_agaein;
             return true;
         } else {
             perror("receive error");
             return false;
         }
     }
+    ++count_receive;
 
     bool output = writing->data[0] & 0x80;
 

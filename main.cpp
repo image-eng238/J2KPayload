@@ -160,9 +160,10 @@ int main(int argc, char** argv) {
         printf("receive finish: %ld\n", (receive_finish - receive_start).count());
     });
 
+    constexpr size_t RECEIVE_AFFINITY = 1;
     cpu_set_t mask;
     CPU_ZERO(&mask);
-    CPU_SET(1, &mask);
+    CPU_SET(RECEIVE_AFFINITY, &mask);
     if (auto result = pthread_setaffinity_np(produser.native_handle(), sizeof(mask), &mask); result != 0) {
         fprintf(stderr, "pthread_setaffinity_up() error: %d\n", result);
         exit(1);
@@ -177,6 +178,8 @@ int main(int argc, char** argv) {
     printf("finish diff: %ld\n", diff);
     printf("analysis frame: %ld\n", analysis_frame);
     printf("lost frame: %ld\n", loss_frame);
+    printf("receive: %ld\n", leaky_bucket_buf::count_receive);
+    printf("again: %ld\n", leaky_bucket_buf::count_agaein);
 
     return 0;
 }
