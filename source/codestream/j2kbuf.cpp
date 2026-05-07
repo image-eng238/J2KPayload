@@ -9,7 +9,7 @@ void J2kBuf::step(const int64_t& in) {
     if (recv->access_payload().get_MH() == 0) termination_check();
 }
 void J2kBuf::r_fill() {
-    if (likely_p(!(bit_pos & 0x80), 0.875)) {
+    if (BRANCH_PROB(!(bit_pos & 0x80), 0.265)) {
         bit_pos = 0x80;
         advance_byte_pos(1);
     }
@@ -26,7 +26,7 @@ void J2kBuf::reset(uint8_t* const in) {
 }
 
 uint8_t J2kBuf::get_bit() {
-    if (unlikely_p(bit_pos & static_cast<uint8_t>(0x80), 0.875)) {
+    if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x80), 0.138)) {
         termination_check();
         if (unlikely(bit_purge == static_cast<uint8_t>(0xFF))) { // bit stuffing
             bit_pos >>= 1;
@@ -35,7 +35,7 @@ uint8_t J2kBuf::get_bit() {
     }
     // const uint8_t out = buf_ptr[byte_pos] & bit_pos;
     const uint8_t out = bit_purge & bit_pos;
-    if (unlikely_p(bit_pos & static_cast<uint8_t>(0x01), 0.875)) {
+    if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x01), 0.111)) {
         bit_pos = static_cast<uint8_t>(0x80);
         advance_byte_pos(1);
     } else {

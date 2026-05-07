@@ -49,7 +49,7 @@ bool leaky_bucket_buf::receive() {
     // writing->data_size = tmp_data_size;
     writing->data_size = static_cast<int>(udp->receive(writing->data, BUFFER_SIZE));
     if (writing->data_size == -1) {
-        if (likely_p(errno == EAGAIN, 1.0)) {
+        if (BRANCH_PROB(errno == EAGAIN, 1.0)) {
 #ifdef GENERATE_RECEIVE_PROBABILITY
             ++count_agaein;
 #endif

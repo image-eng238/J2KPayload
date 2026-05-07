@@ -183,6 +183,9 @@ int main(int argc, char** argv) {
     printf("again:   %ld\n", leaky_bucket_buf::count_agaein);
     printf("receive probability: %lf%% \n", static_cast<double>(leaky_bucket_buf::count_receive) / static_cast<double>(leaky_bucket_buf::count_receive + leaky_bucket_buf::count_agaein));
 #endif
+    printf("true : %ld\nfalse: %ld\n", J2kBuf::count_true, J2kBuf::count_false);
+    printf("true%% : %lf\n", static_cast<double>(J2kBuf::count_true) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
+    printf("false%%: %lf\n", static_cast<double>(J2kBuf::count_false) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
 
     return 0;
 }
