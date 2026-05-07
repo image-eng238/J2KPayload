@@ -2,12 +2,14 @@
 #include <cassert>
 #include <cstring>
 
+#include "opt_macro.hpp"
+
 void J2kBuf::step(const int64_t& in) {
     advance_byte_pos(in);
     if (recv->access_payload().get_MH() == 0) termination_check();
 }
 void J2kBuf::r_fill() {
-    if (!(bit_pos & 0x80)) {
+    if (likely_p(!(bit_pos & 0x80), 0.875)) {
         bit_pos = 0x80;
         advance_byte_pos(1);
     }
@@ -24,16 +26,16 @@ void J2kBuf::reset(uint8_t* const in) {
 }
 
 uint8_t J2kBuf::get_bit() {
-    if (bit_pos & static_cast<uint8_t>(0x80)) {
+    if (unlikely_p(bit_pos & static_cast<uint8_t>(0x80), 0.875)) {
         termination_check();
-        if (bit_purge == static_cast<uint8_t>(0xFF)) { // bit stuffing
+        if (unlikely(bit_purge == static_cast<uint8_t>(0xFF))) { // bit stuffing
             bit_pos >>= 1;
         }
         bit_purge = buf_ptr[byte_pos];
     }
     // const uint8_t out = buf_ptr[byte_pos] & bit_pos;
     const uint8_t out = bit_purge & bit_pos;
-    if (bit_pos & static_cast<uint8_t>(0x01)) {
+    if (unlikely_p(bit_pos & static_cast<uint8_t>(0x01), 0.875)) {
         bit_pos = static_cast<uint8_t>(0x80);
         advance_byte_pos(1);
     } else {
