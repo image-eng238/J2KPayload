@@ -82,6 +82,7 @@ int main(int argc, char** argv) {
     std::chrono::steady_clock::time_point analysis_finish;
     std::chrono::steady_clock::time_point receive_start;
     std::chrono::steady_clock::time_point receive_finish;
+    std::chrono::steady_clock::time_point avg_frame;
     size_t analysis_frame = 0;
     size_t loss_frame     = 0;
 
@@ -110,21 +111,26 @@ int main(int argc, char** argv) {
                         p.read_packet(buf);
                         ++loop_count;
                     }
-
+#ifdef GENERATE_FRAME
+                    // フレーム終了
+                    ++analysis_frame;
+                    if (out_flame != 0 && analysis_frame % out_flame == 0) {
+                        auto now = std::chrono::steady_clock::now();
+                        auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
+                        printf("analysis_frame: %ld, avg: %.3fms\n", analysis_frame, (static_cast<float>(avg.count()) / 1'000) / out_flame);
+                        avg_frame = now;
+                    }
+#endif
                 } else {
+                    // フレーム開始
                     if (unlikely(main_header.empty())) {
+                        avg_frame = std::chrono::steady_clock::now();
                         J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
                         main_header.read(buf);
                         j2k_tile.init(main_header, buf);
                         j2k_tile.read(main_header, j2k_packet_table);
                         printf("main header read, seq: %d\n", rtp_recv.get_extended_sequence_number());
                     }
-                    ++analysis_frame;
-#ifdef GENERATE_FRAME
-                    if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                        printf("analysis_frame: %ld\n", analysis_frame);
-                    }
-#endif
                 }
             } catch (rtp_sequence_error& e) {
                 // メインパケットの出現までパケットを破棄
@@ -183,9 +189,9 @@ int main(int argc, char** argv) {
     printf("again:   %ld\n", leaky_bucket_buf::count_agaein);
     printf("receive probability: %lf%% \n", static_cast<double>(leaky_bucket_buf::count_receive) / static_cast<double>(leaky_bucket_buf::count_receive + leaky_bucket_buf::count_agaein));
 #endif
-    printf("true : %ld\nfalse: %ld\n", J2kBuf::count_true, J2kBuf::count_false);
-    printf("true%% : %lf\n", static_cast<double>(J2kBuf::count_true) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
-    printf("false%%: %lf\n", static_cast<double>(J2kBuf::count_false) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
+    // printf("true : %ld\nfalse: %ld\n", J2kBuf::count_true, J2kBuf::count_false);
+    // printf("true%% : %lf\n", static_cast<double>(J2kBuf::count_true) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
+    // printf("false%%: %lf\n", static_cast<double>(J2kBuf::count_false) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
 
     return 0;
 }
