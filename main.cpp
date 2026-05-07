@@ -178,8 +178,11 @@ int main(int argc, char** argv) {
     printf("finish diff: %ld\n", diff);
     printf("analysis frame: %ld\n", analysis_frame);
     printf("lost frame: %ld\n", loss_frame);
+#ifdef GENERATE_RECEIVE_PROBABILITY
     printf("receive: %ld\n", leaky_bucket_buf::count_receive);
-    printf("again: %ld\n", leaky_bucket_buf::count_agaein);
+    printf("again:   %ld\n", leaky_bucket_buf::count_agaein);
+    printf("receive probability: %lf%% \n", static_cast<double>(leaky_bucket_buf::count_receive) / static_cast<double>(leaky_bucket_buf::count_receive + leaky_bucket_buf::count_agaein));
+#endif
 
     return 0;
 }

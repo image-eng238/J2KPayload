@@ -14,12 +14,12 @@
 class leaky_bucket_buf {
 
 public:
-    static constexpr size_t BUFFER_SIZE = 1384;
-    static constexpr size_t NUM_BUFFER  = 2000;
-
+#ifdef GENERATE_RECEIVE_PROBABILITY
     inline static size_t count_receive = 0;
     inline static size_t count_agaein  = 0;
-
+#endif
+    static constexpr size_t BUFFER_SIZE = 1384;
+    static constexpr size_t NUM_BUFFER  = 2000;
     leaky_bucket_buf();
     leaky_bucket_buf(UDPReceiver* const);
 
