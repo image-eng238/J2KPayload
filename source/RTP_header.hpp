@@ -130,7 +130,7 @@ public:
             pkt_data_size       = 0;
             pre_sequence_number = extended_sequence_number;
 
-            std::this_thread::yield();
+            // std::this_thread::yield();
             throw err;
         }
     }
