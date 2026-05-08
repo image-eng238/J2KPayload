@@ -9,7 +9,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # global defines
 
 # add_definitions(-DGENERATE_LOG)
-add_definitions(-DGENERATE_FRAME)
 # add_definitions(-DGENERATE_RECEIVE_PROBABILITY)
 
 add_definitions(-DENABLE_EXPECT)

@@ -19,7 +19,7 @@ public:
     inline static size_t count_agaein  = 0;
 #endif
     static constexpr size_t BUFFER_SIZE = 1384;
-    static constexpr size_t NUM_BUFFER  = 2000;
+    static constexpr size_t NUM_BUFFER  = 3000;
     leaky_bucket_buf();
     leaky_bucket_buf(UDPReceiver* const);
 
@@ -27,6 +27,11 @@ public:
     bool receive();
     int pop(uint8_t*&);
     static uint32_t get_seq(const uint8_t* const data) { return static_cast<uint32_t>(data[15] << 0x10) | static_cast<uint32_t>(data[2] << 0x8) | static_cast<uint32_t>(data[3]); }
+    size_t get_num_data() {
+        std::unique_lock lk{mtx};
+        return current_num_data + tmp_num_data;
+    }
+    size_t get_num_data_unsafe() const { return current_num_data + tmp_num_data; }
 
 private:
     struct link_list {

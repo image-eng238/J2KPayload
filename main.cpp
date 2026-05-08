@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    static RTPReceiver rtp_recv;
+    RTPReceiver rtp_recv;
     if (addr.empty() && port == 0) {
         rtp_recv.sock_bind();
     } else {
@@ -111,16 +111,15 @@ int main(int argc, char** argv) {
                         p.read_packet(buf);
                         ++loop_count;
                     }
-#ifdef GENERATE_FRAME
+
                     // フレーム終了
                     ++analysis_frame;
                     if (out_flame != 0 && analysis_frame % out_flame == 0) {
                         auto now = std::chrono::steady_clock::now();
                         auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-                        printf("analysis_frame: %ld, avg: %.3fms\n", analysis_frame, (static_cast<float>(avg.count()) / 1'000) / out_flame);
+                        printf("analysis_frame: %ld, avg: %.4fms, data in buf(unsafe): %ld\n", analysis_frame, (static_cast<float>(avg.count()) / 1'000) / out_flame, rtp_recv.access_recv_buf().get_num_data_unsafe());
                         avg_frame = now;
                     }
-#endif
                 } else {
                     // フレーム開始
                     if (unlikely(main_header.empty())) {
@@ -136,7 +135,8 @@ int main(int argc, char** argv) {
                 // メインパケットの出現までパケットを破棄
                 // 将来的には timestanp で制御
                 auto dest_packet = rtp_recv.dest_packt();
-                fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet);
+                // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld, frame: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet, analysis_frame);
+                fprintf(stderr, "analysis_frame: %ld, lost packets: %d, discarded packsts: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet);
                 ++loss_frame;
             }
 

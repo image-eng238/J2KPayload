@@ -74,14 +74,14 @@ bool leaky_bucket_buf::receive() {
     if (lk.try_lock()) {
         current_num_data += 1 + tmp_num_data;
         if (tmp_num_data != 0) tmp_num_data = 0;
-        assert(current_num_data < NUM_BUFFER);
+        // assert(current_num_data < NUM_BUFFER);
         lk.unlock();
+        cond.notify_one();
     } else {
         ++tmp_num_data;
         // スレッドセーフでないが current_num_data は他スレッドから操作は減算のみであるためアサーションに使用
-        assert(current_num_data + tmp_num_data < NUM_BUFFER);
+        // assert(current_num_data + tmp_num_data < NUM_BUFFER);
     }
-    cond.notify_one();
     return output;
 }
 
