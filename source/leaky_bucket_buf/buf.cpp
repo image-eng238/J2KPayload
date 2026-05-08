@@ -43,6 +43,7 @@ bool leaky_bucket_buf::receive() {
     // assert(current_num_data + tmp_num_data < NUM_BUFFER); // buffer leak
 
     auto& writing = next_write;
+    LOAD_INTO_CACHE(writing, opt_macro::WRITE, opt_macro::HIGH_TEMPORAL);
     // assert(writing->empty());
 
     // memcpy(writing->data, tmp_buf, tmp_data_size);
