@@ -13,4 +13,13 @@
 #define assume(expr) \
     if (!(expr)) __builtin_unreachable()
 
-// __builtin___clear_cache
+#define LOAD_INTO_CACHE(ptr, rw, locality) __builtin_prefetch((ptr), (rw), (locality))
+namespace opt_macro {
+    constexpr int READ              = 0;
+    constexpr int WRITE             = 1;
+    constexpr int SHARED_READ       = 2;
+    constexpr int NO_TEMPORAL       = 0;
+    constexpr int LOW_TEMPORAL      = 1;
+    constexpr int MODERATE_TEMPORAL = 2;
+    constexpr int HIGH_TEMPORAL     = 3;
+}
