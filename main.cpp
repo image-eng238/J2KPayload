@@ -136,7 +136,7 @@ int main(int argc, char** argv) {
                 // 将来的には timestanp で制御
                 auto dest_packet = rtp_recv.dest_packt();
                 // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld, frame: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet, analysis_frame);
-                fprintf(stderr, "analysis_frame: %ld, lost packets: %d, discarded packsts: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet);
+                fprintf(stderr, "error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet);
                 ++loss_frame;
             }
 
@@ -160,7 +160,7 @@ int main(int argc, char** argv) {
         //     // std::this_thread::sleep_for(std::chrono::microseconds(10));
         // }
         while (r.receive()) {
-            std::this_thread::yield();
+            // std::this_thread::yield();
         }
         receive_finish = std::chrono::steady_clock::now();
         printf("receive finish: %ld\n", (receive_finish - receive_start).count());
