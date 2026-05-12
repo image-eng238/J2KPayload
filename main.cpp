@@ -166,9 +166,8 @@ int main(int argc, char** argv) {
                     default:
                         fprintf(stderr, "unknown error analysis_frame: %ld, discarded packsts: %ld, data in buf(unsafe): %ld\n", analysis_frame, dest_packet, rtp_recv.access_recv_buf().get_num_data_unsafe());
                 }
+                ++loss_frame;
             }
-
-            ++loss_frame;
 
             // std::this_thread::yield();
         }
@@ -202,6 +201,11 @@ int main(int argc, char** argv) {
             exit(1);
         }
     }
+    // test code
+    cpu_set_t test;
+    CPU_ZERO(&test);
+    CPU_SET(2, &test);
+    pthread_setaffinity_np(consumer.native_handle(), sizeof(test), &test);
 
     consumer.join();
     produser.join();
