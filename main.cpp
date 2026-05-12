@@ -51,6 +51,9 @@ int main(int argc, char** argv) {
     std::string_view addr;
     uint16_t port    = 0;
     size_t out_flame = 100;
+    cpu_set_t affinity;
+    CPU_ZERO(&affinity);
+
     for (auto it = arg_view.begin(); it != arg_view.end(); ++it) {
 
         if (*it == "-a") {
@@ -67,6 +70,19 @@ int main(int argc, char** argv) {
             it++;
             if (std::from_chars(it->begin(), it->end(), out_flame).ptr != it->end()) {
                 out_flame = 100;
+            }
+        }
+        if (*it == "-c") {
+            it++;
+            size_t cpu_bit_mask = 0;
+            if (std::from_chars(it->begin(), it->end(), cpu_bit_mask, 16).ptr == it->end()) {
+                size_t i = 0;
+                while (cpu_bit_mask != 0) {
+                    if (cpu_bit_mask & 0x1)
+                        CPU_SET(i, &affinity);
+                    cpu_bit_mask >>= 1;
+                    ++i;
+                }
             }
         }
     }
@@ -166,13 +182,11 @@ int main(int argc, char** argv) {
         printf("receive finish: %ld\n", (receive_finish - receive_start).count());
     });
 
-    constexpr size_t RECEIVE_AFFINITY = 1;
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    CPU_SET(RECEIVE_AFFINITY, &mask);
-    if (auto result = pthread_setaffinity_np(produser.native_handle(), sizeof(mask), &mask); result != 0) {
-        fprintf(stderr, "pthread_setaffinity_up() error: %d\n", result);
-        exit(1);
+    if (CPU_COUNT(&affinity) != 0) {
+        if (auto result = pthread_setaffinity_np(produser.native_handle(), sizeof(affinity), &affinity); result != 0) {
+            fprintf(stderr, "pthread_setaffinity_up() error: %d\n", result);
+            exit(1);
+        }
     }
 
     consumer.join();
