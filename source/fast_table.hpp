@@ -25,8 +25,7 @@ struct fast_table {
         static size_t call_count = 0;
         call_count++;
         if (unlikely(!payload_buf.get_bit())) { // empty packet
-            std::cout << "empty packet, call_count: " << call_count << std::endl;
-            return;
+            throw J2K_packet_error(J2K_packet_error::empty_packet);
         }
         for (uint8_t i = 0; i < this->number_of_subband; ++i) {
 #ifdef GENERATE_LOG

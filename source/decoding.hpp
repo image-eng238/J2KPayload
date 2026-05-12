@@ -24,6 +24,16 @@ class Tile;
 typedef MultiMem::static_memory<2000000> DecoMem; // Tile が 0x18'0000 でキリがいい
 // typedef MultiMem::static_memory<0x1C'0000> DecoMem; // 0x18'0000 でキリがいい
 
+struct J2K_packet_error {
+    J2K_packet_error() = default;
+    J2K_packet_error(const uint8_t& t) : type{t} {}
+    uint8_t type;
+    enum {
+        empty_packet = 0,
+        segment_byte = 1
+    };
+};
+
 class TagTree {
 public:
     TagTree();
