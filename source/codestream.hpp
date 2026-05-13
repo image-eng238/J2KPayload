@@ -74,10 +74,10 @@ public:
     void l_fill();
     void reset(uint8_t* const);
 
-    inline uint8_t get_bit();
+    uint8_t get_bit();
     uint32_t get_bit(const uint8_t&);
 
-    inline uint8_t count_bit(const uint8_t&);
+    uint8_t count_bit(const uint8_t&);
 
     uint8_t get_byte();
     uint32_t get_byte(const uint8_t&);
