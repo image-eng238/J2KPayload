@@ -25,7 +25,7 @@ void J2kBuf::reset(uint8_t* const in) {
     byte_pos = 0;
 }
 
-uint8_t J2kBuf::get_bit() {
+inline uint8_t J2kBuf::get_bit() {
     if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x80), 0.138)) {
         termination_check();
         if (unlikely(bit_purge == static_cast<uint8_t>(0xFF))) { // bit stuffing
@@ -53,7 +53,68 @@ uint32_t J2kBuf::get_bit(const uint8_t& n) {
     return out;
 }
 
-uint8_t J2kBuf::get_byte() {
+inline uint8_t J2kBuf::count_bit(const uint8_t& perd) {
+    uint8_t output = 0;
+    while (likely(byte_pos < buf_length)) {
+        if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x80), 0.138)) {
+            if (unlikely(bit_purge == static_cast<uint8_t>(0xFF))) { // bit stuffing
+                bit_pos >>= 1;
+            }
+            bit_purge = buf_ptr[byte_pos];
+        }
+
+        if (static_cast<uint8_t>(static_cast<bool>(bit_purge & bit_pos)) != perd) {
+            ++output;
+        } else {
+            if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x01), 0.111)) {
+                bit_pos = static_cast<uint8_t>(0x80);
+                advance_byte_pos(1);
+            } else {
+                bit_pos >>= 1;
+            }
+            return output;
+        }
+
+        if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x01), 0.111)) {
+            bit_pos = static_cast<uint8_t>(0x80);
+            advance_byte_pos(1);
+        } else {
+            bit_pos >>= 1;
+        }
+    }
+    this->receive();
+    while (likely(byte_pos < buf_length)) {
+        if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x80), 0.138)) {
+            if (unlikely(bit_purge == static_cast<uint8_t>(0xFF))) { // bit stuffing
+                bit_pos >>= 1;
+            }
+            bit_purge = buf_ptr[byte_pos];
+        }
+
+        if (static_cast<uint8_t>(static_cast<bool>(bit_purge & bit_pos)) != perd) {
+            ++output;
+        } else {
+            if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x01), 0.111)) {
+                bit_pos = static_cast<uint8_t>(0x80);
+                advance_byte_pos(1);
+            } else {
+                bit_pos >>= 1;
+            }
+            return output;
+        }
+
+        if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x01), 0.111)) {
+            bit_pos = static_cast<uint8_t>(0x80);
+            advance_byte_pos(1);
+        } else {
+            bit_pos >>= 1;
+        }
+    }
+    assume(false);
+}
+
+uint8_t
+J2kBuf::get_byte() {
     if (bit_pos | 0x7F) {
         bit_pos = 0x80;
     }
