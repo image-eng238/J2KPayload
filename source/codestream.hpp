@@ -87,12 +87,12 @@ public:
     uint8_t* make_packet_data(const size_t&, uint8_t* const);
 
 private:
-    void advance_byte_pos(const size_t&);
-    void termination_check();
+    inline void advance_byte_pos(const size_t&);
+    inline void termination_check();
     void termination_check(const size_t&);
     void receive();
-    uint8_t bit_pos;
-    uint8_t bit_purge;
+    alignas(8) uint8_t bit_pos;
+    alignas(8) uint8_t bit_purge;
 
     RTPReceiver* recv;
 

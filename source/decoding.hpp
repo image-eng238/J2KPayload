@@ -101,6 +101,8 @@ protected:
 
 class CodeBlock : public ReferenceGrid {
 public:
+    // inline static size_t pkt_header_true  = 0;
+    // inline static size_t pkt_header_false = 0;
     // friend void PrecinctSubband::read_packet_header(J2kBuf*, uint16_t, uint16_t, uint8_t);
     friend class PrecinctSubband;
 

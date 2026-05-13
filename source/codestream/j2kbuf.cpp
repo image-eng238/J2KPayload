@@ -111,7 +111,7 @@ uint8_t* J2kBuf::make_packet_data(const size_t& len, uint8_t* const ptr) {
     return ptr;
 }
 
-void J2kBuf::advance_byte_pos(const size_t& n) {
+inline void J2kBuf::advance_byte_pos(const size_t& n) {
     // if (byte_pos + n <= buf_length) {
     //     byte_pos += n;
     // } else {
@@ -120,7 +120,7 @@ void J2kBuf::advance_byte_pos(const size_t& n) {
     byte_pos += n;
 }
 
-void J2kBuf::termination_check() {
+inline void J2kBuf::termination_check() {
     if (byte_pos < buf_length) {
         ;
     } else {

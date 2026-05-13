@@ -254,7 +254,7 @@ void CodeBlock::read_packet_header(J2kBuf* const buf, const uint8_t debug_band_p
     // ここのメモリアクセスに改善の余地あり キャシュに乗ってないためメモリまで探しに行ってる
     CodeBlock* const current_block = this;
 
-    if (buf->get_bit()) {
+    if (BRANCH_PROB(buf->get_bit(), 0.365)) {
         current_block->number_of_zbp = [&] {
             uint8_t bits = 0;
             while (!buf->get_bit()) ++bits;
@@ -263,11 +263,11 @@ void CodeBlock::read_packet_header(J2kBuf* const buf, const uint8_t debug_band_p
         // 符号化パス数を読む
         uint32_t new_pass = 1;
         new_pass += buf->get_bit();
-        if (new_pass >= 2) {
+        if (BRANCH_PROB(new_pass >= 2, 0.9)) {
             new_pass += buf->get_bit();
-            if (new_pass >= 3) {
+            if (BRANCH_PROB(new_pass >= 3, 0.818)) {
                 new_pass += buf->get_bit(2);
-                if (new_pass >= 6) {
+                if (BRANCH_PROB(new_pass >= 6, 0.0)) {
                     new_pass += buf->get_bit(5);
                     if (unlikely(new_pass >= 37)) {
                         new_pass += buf->get_bit(7);

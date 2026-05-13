@@ -221,6 +221,9 @@ int main(int argc, char** argv) {
     printf("again:   %ld\n", leaky_bucket_buf::count_agaein);
     printf("receive probability: %lf%% \n", static_cast<double>(leaky_bucket_buf::count_receive) / static_cast<double>(leaky_bucket_buf::count_receive + leaky_bucket_buf::count_agaein));
 #endif
+    // printf("pkt_header_true: %ld\n", CodeBlock::pkt_header_true);
+    // printf("pkt_header_false: %ld\n", CodeBlock::pkt_header_false);
+    // printf("prob: %lf%%\n", static_cast<double>(CodeBlock::pkt_header_true) / (CodeBlock::pkt_header_true + CodeBlock::pkt_header_false));
     // printf("true : %ld\nfalse: %ld\n", J2kBuf::count_true, J2kBuf::count_false);
     // printf("true%% : %lf\n", static_cast<double>(J2kBuf::count_true) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
     // printf("false%%: %lf\n", static_cast<double>(J2kBuf::count_false) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
