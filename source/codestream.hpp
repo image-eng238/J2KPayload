@@ -59,6 +59,22 @@ constexpr Postion2D<T> operator%(const typename Postion2D<T>::type& left, const 
 using pos2D = Postion2D<>;
 
 class J2kBuf {
+    inline void advance_byte_pos(const size_t& n) {
+        // if (byte_pos + n <= buf_length) {
+        //     byte_pos += n;
+        // } else {
+        //     assert(false);
+        // }
+        byte_pos += n;
+    }
+    inline void termination_check() {
+        if (byte_pos < buf_length) {
+            ;
+        } else {
+            receive();
+        }
+    }
+
 public:
     //     inline static size_t count_true  = 0;
     //     inline static size_t count_false = 0;
@@ -74,10 +90,93 @@ public:
     void l_fill();
     void reset(uint8_t* const);
 
-    uint8_t get_bit();
-    uint32_t get_bit(const uint8_t&);
+    uint8_t get_bit() {
+        if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x80), 0.138)) {
+            termination_check();
+            if (unlikely(bit_purge == static_cast<uint8_t>(0xFF))) { // bit stuffing
+                bit_pos >>= 1;
+            }
+            bit_purge = buf_ptr[byte_pos];
+        }
+        // const uint8_t out = buf_ptr[byte_pos] & bit_pos;
+        const uint8_t out = bit_purge & bit_pos;
+        if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x01), 0.111)) {
+            bit_pos = static_cast<uint8_t>(0x80);
+            advance_byte_pos(1);
+        } else {
+            bit_pos >>= 1;
+        }
+        // return (out) ? 1 : 0;
+        return static_cast<uint8_t>(static_cast<bool>(out));
+    }
+    uint32_t get_bit(const uint8_t& n) {
+        assert(n <= 32);
+        uint32_t out = 0;
+        for (uint8_t i = 0; i < n; ++i) {
+            out = (out << 1) | get_bit();
+        }
+        return out;
+    }
 
-    uint8_t count_bit(const uint8_t&);
+    uint8_t count_bit(const uint8_t& perd) {
+        uint8_t output = 0;
+        while (likely(byte_pos < buf_length)) {
+            if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x80), 0.138)) {
+                if (unlikely(bit_purge == static_cast<uint8_t>(0xFF))) { // bit stuffing
+                    bit_pos >>= 1;
+                }
+                bit_purge = buf_ptr[byte_pos];
+            }
+
+            if (static_cast<uint8_t>(static_cast<bool>(bit_purge & bit_pos)) != perd) {
+                ++output;
+            } else {
+                if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x01), 0.111)) {
+                    bit_pos = static_cast<uint8_t>(0x80);
+                    advance_byte_pos(1);
+                } else {
+                    bit_pos >>= 1;
+                }
+                return output;
+            }
+
+            if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x01), 0.111)) {
+                bit_pos = static_cast<uint8_t>(0x80);
+                advance_byte_pos(1);
+            } else {
+                bit_pos >>= 1;
+            }
+        }
+        this->receive();
+        while (likely(byte_pos < buf_length)) {
+            if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x80), 0.138)) {
+                if (unlikely(bit_purge == static_cast<uint8_t>(0xFF))) { // bit stuffing
+                    bit_pos >>= 1;
+                }
+                bit_purge = buf_ptr[byte_pos];
+            }
+
+            if (static_cast<uint8_t>(static_cast<bool>(bit_purge & bit_pos)) != perd) {
+                ++output;
+            } else {
+                if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x01), 0.111)) {
+                    bit_pos = static_cast<uint8_t>(0x80);
+                    advance_byte_pos(1);
+                } else {
+                    bit_pos >>= 1;
+                }
+                return output;
+            }
+
+            if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x01), 0.111)) {
+                bit_pos = static_cast<uint8_t>(0x80);
+                advance_byte_pos(1);
+            } else {
+                bit_pos >>= 1;
+            }
+        }
+        assume(false);
+    }
 
     uint8_t get_byte();
     uint32_t get_byte(const uint8_t&);
@@ -89,8 +188,6 @@ public:
     uint8_t* make_packet_data(const size_t&, uint8_t* const);
 
 private:
-    inline void advance_byte_pos(const size_t&);
-    inline void termination_check();
     void termination_check(const size_t&);
     void receive();
     alignas(8) uint8_t bit_pos;
