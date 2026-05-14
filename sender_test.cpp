@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
 
     UDPReceiver upd(addr.data(), port);
     // std::thread t1([&] {
-    uint8_t recv_buf[leaky_bucket_buf::BUFFER_SIZE];
+    uint8_t recv_buf[leaky_bucket_buf::PACKET_SIZE];
     RTPHeader rtp(recv_buf);
     J2KPayloadHeader j2k(recv_buf + RTPHeader::get_header_length());
 
@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
 
     while (true) {
         // std::this_thread::yield();
-        auto siz = upd.receive(recv_buf, leaky_bucket_buf::BUFFER_SIZE);
+        auto siz = upd.receive(recv_buf, leaky_bucket_buf::PACKET_SIZE);
         if (siz == -1 && errno != EAGAIN) {
             perror("receive error");
             break;
