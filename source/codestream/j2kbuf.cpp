@@ -25,15 +25,6 @@ void J2kBuf::reset(uint8_t* const in) {
     byte_pos = 0;
 }
 
-uint32_t J2kBuf::get_bit(const uint8_t& n) {
-    assert(n <= 32);
-    uint32_t out = 0;
-    for (uint8_t i = 0; i < n; ++i) {
-        out = (out << 1) | get_bit();
-    }
-    return out;
-}
-
 uint8_t J2kBuf::count_bit(const uint8_t& perd) {
     uint8_t output = 0;
     while (likely(byte_pos < buf_length)) {

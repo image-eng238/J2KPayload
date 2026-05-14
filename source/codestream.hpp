@@ -110,7 +110,14 @@ public:
         // return (out) ? 1 : 0;
         return static_cast<uint8_t>(static_cast<bool>(out));
     }
-    uint32_t get_bit(const uint8_t&);
+    FORCE_INLINE uint32_t get_bit(const uint8_t& n) {
+        assert(n <= 32);
+        uint32_t out = 0;
+        for (uint8_t i = 0; i < n; ++i) {
+            out = (out << 1) | get_bit();
+        }
+        return out;
+    }
 
     uint8_t count_bit(const uint8_t&);
 
