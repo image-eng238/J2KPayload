@@ -113,8 +113,7 @@ uint8_t J2kBuf::count_bit(const uint8_t& perd) {
     assume(false);
 }
 
-uint8_t
-J2kBuf::get_byte() {
+uint8_t J2kBuf::get_byte() {
     if (bit_pos | 0x7F) {
         bit_pos = 0x80;
     }
@@ -181,7 +180,7 @@ void J2kBuf::termination_check(const size_t& n) {
 }
 void J2kBuf::receive() {
     assert(recv != nullptr);
-    if (recv->receive()) {
+    if (recv->pop()) {
         byte_pos   = 0;
         bit_pos    = 0x80;
         buf_ptr    = recv->access_pkt_data_ptr();

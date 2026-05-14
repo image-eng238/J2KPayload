@@ -82,7 +82,7 @@ public:
     J2kBuf() : buf_ptr{nullptr}, bit_pos{128}, byte_pos{0}, buf_length{0}, recv{} {};
     J2kBuf(uint8_t* in) : buf_ptr{in}, bit_pos{128}, byte_pos{0}, buf_length{0}, recv{} {};
     J2kBuf(uint8_t* in, const size_t& length) : buf_ptr{in}, bit_pos{128}, byte_pos{0}, buf_length{length}, recv{} {};
-    J2kBuf(uint8_t* in, const size_t& length, RTPReceiver* const& rptr)
+    J2kBuf(uint8_t* in, const size_t& length, RTPReceiver_ref* const& rptr)
         : buf_ptr{in}, bit_pos{128}, byte_pos{0}, buf_length{length}, recv{rptr} {};
 
     void step(const int64_t& = 1);
@@ -110,7 +110,7 @@ private:
     alignas(8) uint8_t bit_pos;
     alignas(8) uint8_t bit_purge;
 
-    RTPReceiver* recv;
+    RTPReceiver_ref* recv;
 
     size_t byte_pos;
     size_t buf_length;

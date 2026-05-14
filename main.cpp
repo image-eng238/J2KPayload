@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    RTPReceiver rtp_recv;
+    static RTPReceiver rtp_recv;
     if (addr.empty() && port == 0) {
         rtp_recv.sock_bind();
     } else {
@@ -101,35 +101,37 @@ int main(int argc, char** argv) {
     std::once_flag is_main_packet_read;
     std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table_base;
 
-    auto analysis_process = [&]() -> void {
+    auto analysis_process = [&](const size_t t_num) -> void {
         printf("analysis thread ready...\n");
         std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
+        RTPReceiver_ref rtp_ref{rtp_recv.access_recv_buf().get_accesser(t_num)};
 
         avg_frame = std::chrono::steady_clock::now();
         // 一回だけ main packet を解析
         std::call_once(is_main_packet_read, [&]() -> void {
-            rtp_recv.receive();
-            auto& j2kpayload    = rtp_recv.access_payload();
-            auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
-            auto& pkt_data_size = rtp_recv.access_pkt_data_size();
-            J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
+            printf("main header reading(%d)...\n", t_num);
+            rtp_ref.pop();
+            auto& j2kpayload    = rtp_ref.access_payload();
+            auto& pkt_data      = rtp_ref.access_pkt_data_ptr();
+            auto& pkt_data_size = rtp_ref.access_pkt_data_size();
+            J2kBuf buf(pkt_data, pkt_data_size, &rtp_ref);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
             j2k_tile.read(main_header, j2k_packet_table_base);
-            printf("main header read, seq: %d\n", rtp_recv.get_extended_sequence_number());
+            printf("main header read, seq: %d\n", t_num, rtp_ref.get_extended_sequence_number());
         });
         // 解析済みのテーブルをローカル変数にコピー
         memcpy(&j2k_packet_table, &j2k_packet_table_base, sizeof(j2k_packet_table_base));
 
         while (true) {
             try {
-                if (unlikely(!rtp_recv.receive())) break;
-                auto& j2kpayload    = rtp_recv.access_payload();
-                auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
-                auto& pkt_data_size = rtp_recv.access_pkt_data_size();
+                if (unlikely(!rtp_ref.pop())) break;
+                auto& j2kpayload    = rtp_ref.access_payload();
+                auto& pkt_data      = rtp_ref.access_pkt_data_ptr();
+                auto& pkt_data_size = rtp_ref.access_pkt_data_size();
 
                 if (likely(j2kpayload.get_MH() == 0)) { // body packet
-                    J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
+                    J2kBuf buf(pkt_data, pkt_data_size, &rtp_ref);
                     size_t loop_count = 0;
                     for (auto& p : j2k_packet_table) {
                         // read_packet(p, buf);
@@ -152,21 +154,21 @@ int main(int argc, char** argv) {
             } catch (rtp_sequence_error& e) {
                 // メインパケットの出現までパケットを破棄
                 // 将来的には timestanp で制御
-                auto dest_packet = rtp_recv.dest_packt();
+                auto dest_packet = rtp_ref.dest_packt();
                 // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld, frame: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet, analysis_frame);
                 fprintf(stderr, "RTP error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet);
                 ++loss_frame;
             } catch (J2K_packet_error& e) {
-                auto dest_packet = rtp_recv.dest_packt();
+                auto dest_packet = rtp_ref.dest_packt();
                 switch (e.type) {
                     case J2K_packet_error::empty_packet:
-                        fprintf(stderr, "j2k packet error analysis_frame: %ld, discarded packsts: %ld, data in buf(unsafe): %ld\n", analysis_frame, dest_packet, rtp_recv.access_recv_buf().get_num_data_unsafe());
+                        fprintf(stderr, "j2k packet error analysis_frame: %ld, discarded packsts: %ld, data in buf(unsafe): %ld\n", analysis_frame, dest_packet, rtp_ref.get_recv_buf_ptr()->get_num_data_unsafe());
                         break;
                     case J2K_packet_error::segment_byte:
-                        fprintf(stderr, "segment error analysis_frame: %ld, discarded packsts: %ld, data in buf(unsafe): %ld\n", analysis_frame, dest_packet, rtp_recv.access_recv_buf().get_num_data_unsafe());
+                        fprintf(stderr, "segment error analysis_frame: %ld, discarded packsts: %ld, data in buf(unsafe): %ld\n", analysis_frame, dest_packet, rtp_ref.get_recv_buf_ptr()->get_num_data_unsafe());
                         break;
                     default:
-                        fprintf(stderr, "unknown error analysis_frame: %ld, discarded packsts: %ld, data in buf(unsafe): %ld\n", analysis_frame, dest_packet, rtp_recv.access_recv_buf().get_num_data_unsafe());
+                        fprintf(stderr, "unknown error analysis_frame: %ld, discarded packsts: %ld, data in buf(unsafe): %ld\n", analysis_frame, dest_packet, rtp_ref.get_recv_buf_ptr()->get_num_data_unsafe());
                 }
                 ++loss_frame;
             }
@@ -174,8 +176,8 @@ int main(int argc, char** argv) {
         printf("analysis finish\n");
     };
 
-    std::thread analysis_t1;
-    std::thread analysis_t2;
+    std::thread analysis_t1(analysis_process, 0);
+    std::thread analysis_t2(analysis_process, 1);
 
     auto& r = rtp_recv.access_recv_buf();
     std::thread receive_t([&r]() {
