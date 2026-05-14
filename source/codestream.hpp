@@ -6,6 +6,7 @@
 #include "const_value.hpp"
 
 #include "RTP_header.hpp"
+#include "opt_macro.hpp"
 
 template <typename T = uint32_t>
 struct Postion2D {
@@ -90,7 +91,25 @@ public:
     void l_fill();
     void reset(uint8_t* const);
 
-    uint8_t get_bit();
+    FORCE_INLINE uint8_t get_bit() {
+        if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x80), 0.138)) {
+            termination_check();
+            if (unlikely(bit_purge == static_cast<uint8_t>(0xFF))) { // bit stuffing
+                bit_pos >>= 1;
+            }
+            bit_purge = buf_ptr[byte_pos];
+        }
+        // const uint8_t out = buf_ptr[byte_pos] & bit_pos;
+        const uint8_t out = bit_purge & bit_pos;
+        if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x01), 0.111)) {
+            bit_pos = static_cast<uint8_t>(0x80);
+            advance_byte_pos(1);
+        } else {
+            bit_pos >>= 1;
+        }
+        // return (out) ? 1 : 0;
+        return static_cast<uint8_t>(static_cast<bool>(out));
+    }
     uint32_t get_bit(const uint8_t&);
 
     uint8_t count_bit(const uint8_t&);

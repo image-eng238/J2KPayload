@@ -255,15 +255,15 @@ void CodeBlock::read_packet_header(J2kBuf* const buf, const uint8_t debug_band_p
     CodeBlock* const current_block = this;
 
     if (BRANCH_PROB(buf->get_bit(), 0.365)) {
-        // current_block->number_of_zbp = [&] {
-        //     uint8_t bits = 0;
-        //     while (!buf->get_bit()) ++bits;
-        //     return bits;
-        // }();
-        current_block->number_of_zbp = buf->count_bit(1);
+        current_block->number_of_zbp = [&] {
+            uint8_t bits = 0;
+            while (!buf->get_bit()) ++bits;
+            return bits;
+        }();
+        // current_block->number_of_zbp = buf->count_bit(1);
         // printf("zbp: %d\n", static_cast<uint32_t>(current_block->number_of_zbp));
         // 符号化パス数を読む
-        uint32_t new_pass            = 1;
+        uint32_t new_pass = 1;
         new_pass += buf->get_bit();
         if (BRANCH_PROB(new_pass >= 2, 0.9)) {
             new_pass += buf->get_bit();
@@ -286,17 +286,17 @@ void CodeBlock::read_packet_header(J2kBuf* const buf, const uint8_t debug_band_p
         // 例えば、パス数が10の場合、9を減算して、1つのパスを作成します。
         // OpenJPH ojph_precinct.cpp : 466 より引用
 
-        // uint8_t lblock = 3;
+        uint8_t lblock = 3;
         // while (buf->get_bit()) lblock++; // 値を観察すると 8 までしか出現してない
 
-        // for (uint8_t i = 0; i < 15; ++i) {
-        //     if (buf->get_bit()) {
-        //         lblock++;
-        //     } else {
-        //         break;
-        //     }
-        // }
-        uint8_t lblock = 3 + buf->count_bit(0);
+        for (uint8_t i = 0; i < 15; ++i) {
+            if (buf->get_bit()) {
+                lblock++;
+            } else {
+                break;
+            }
+        }
+        // uint8_t lblock = 3 + buf->count_bit(0);
         // printf("lblock: %d\n", static_cast<uint32_t>(lblock));
 
         // OpenJPH の挙動を見ると，1回 segment_byte を buf から取得した後，符号化パス数が2以上の場合，もう一度 segment_byte を読む必要がある？

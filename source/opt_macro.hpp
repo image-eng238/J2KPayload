@@ -23,3 +23,16 @@ namespace opt_macro {
     constexpr int MODERATE_TEMPORAL = 2;
     constexpr int HIGH_TEMPORAL     = 3;
 }
+
+#if defined(_MSC_VER)
+#define FORCE_INLINE __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+#define FORCE_INLINE inline __attribute__((always_inline))
+#else
+#define FORCE_INLINE inline
+#endif
+
+// 使用例
+FORCE_INLINE void MyFunction() {
+    // 短い処理
+}
