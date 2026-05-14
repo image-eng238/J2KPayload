@@ -106,6 +106,7 @@ int main(int argc, char** argv) {
         std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
 
         avg_frame = std::chrono::steady_clock::now();
+        // 一回だけ main packet を解析
         std::call_once(is_main_packet_read, [&]() -> void {
             rtp_recv.receive();
             auto& j2kpayload    = rtp_recv.access_payload();
@@ -117,6 +118,7 @@ int main(int argc, char** argv) {
             j2k_tile.read(main_header, j2k_packet_table_base);
             printf("main header read, seq: %d\n", rtp_recv.get_extended_sequence_number());
         });
+        // 解析済みのテーブルをローカル変数にコピー
         memcpy(&j2k_packet_table, &j2k_packet_table_base, sizeof(j2k_packet_table_base));
 
         while (true) {
@@ -126,22 +128,25 @@ int main(int argc, char** argv) {
                 auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
                 auto& pkt_data_size = rtp_recv.access_pkt_data_size();
 
-                // body packet
-                J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
-                size_t loop_count = 0;
-                for (auto& p : j2k_packet_table) {
-                    // read_packet(p, buf);
-                    p.read_packet(buf);
-                    ++loop_count;
-                }
+                if (likely(j2kpayload.get_MH() == 0)) { // body packet
+                    J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
+                    size_t loop_count = 0;
+                    for (auto& p : j2k_packet_table) {
+                        // read_packet(p, buf);
+                        p.read_packet(buf);
+                        ++loop_count;
+                    }
 
-                // フレーム終了
-                ++analysis_frame;
-                if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                    auto now = std::chrono::steady_clock::now();
-                    auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-                    printf("analysis_frame: %ld, avg: %.4fms, data in buf(unsafe): %ld\n", analysis_frame, (static_cast<float>(avg.count()) / 1'000) / out_flame, rtp_recv.access_recv_buf().get_num_data_unsafe());
-                    avg_frame = now;
+                    // フレーム終了
+                    ++analysis_frame;
+                    if (out_flame != 0 && analysis_frame % out_flame == 0) {
+                        auto now = std::chrono::steady_clock::now();
+                        auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
+                        printf("analysis_frame: %ld, avg: %.4fms, data in buf(unsafe): %ld\n", analysis_frame, (static_cast<float>(avg.count()) / 1'000) / out_flame, rtp_recv.access_recv_buf().get_num_data_unsafe());
+                        avg_frame = now;
+                    }
+                } else {
+                    // main packet
                 }
 
             } catch (rtp_sequence_error& e) {
