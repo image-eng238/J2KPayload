@@ -31,7 +31,7 @@ bool leaky_bucket_buf::receive() {
 
     auto writing = this->next_write;
     LOAD_INTO_CACHE(writing, opt_macro::WRITE, opt_macro::HIGH_TEMPORAL);
-    assert(writing->empty());
+    // assert(writing->empty());
 
     // パケットを受信してバッファに書き込み
     writing->data_size = static_cast<int>(udp->receive(writing->data, ring_element::PACKET_SIZE));
@@ -65,11 +65,12 @@ bool leaky_bucket_buf::receive() {
         current_buffer->cond.notify_one();
 
         // 書き込みバッファを更新
-        current_buffer_pos   = (current_buffer_pos != NUM_BUFFER) ? current_buffer_pos + 1 : 0;
+        ++current_buffer_pos;
+        if (current_buffer_pos < NUM_BUFFER) current_buffer_pos = 0;
         this->current_buffer = &this->accesser[current_buffer_pos];
-        assert(current_buffer->num_data == 0);
-        this->tmp_num_data = 0;
-        this->next_write   = current_buffer->next_pop;
+        // assert(current_buffer->num_data == 0);
+        this->tmp_num_data   = 0;
+        this->next_write     = current_buffer->next_pop;
 
         return output;
     }

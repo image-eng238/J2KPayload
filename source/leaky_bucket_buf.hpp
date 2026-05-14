@@ -25,6 +25,7 @@ class lbb_access {
 
 public:
     int pop(uint8_t*&);
+    size_t get_num_data_unsafe() const { return num_data; }
 
 private:
     ring_element* next_pop;
@@ -121,10 +122,12 @@ public:
 
     constexpr void set_udp(UDPReceiver* const);
     bool receive();
-    int pop(uint8_t*&);
+    // int pop(uint8_t*&);
     static uint32_t get_seq(const uint8_t* const data) { return static_cast<uint32_t>(data[15] << 0x10) | static_cast<uint32_t>(data[2] << 0x8) | static_cast<uint32_t>(data[3]); }
 
     size_t get_num_data_unsafe() const { return current_buffer->num_data + tmp_num_data; }
+
+    lbb_access* get_accesser(const size_t& n) { return &accesser[n]; }
 
 private:
     ring_element* next_write; // receive からのみアクセス
