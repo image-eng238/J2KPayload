@@ -35,12 +35,11 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 #include <cassert>
 #include <array>
 #include <thread>
+#include <cstring>
 
 #include <pthread.h>
 
 constexpr size_t MAX_PACKET_SIZE = 1384;
-
-int read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf);
 
 int main(int argc, char** argv) {
     std::vector<std::string_view> arg_view(argc - 1);
@@ -94,22 +93,32 @@ int main(int argc, char** argv) {
         rtp_recv.sock_bind(addr.data(), port);
     }
 
-    std::chrono::steady_clock::time_point analysis_start;
-    std::chrono::steady_clock::time_point analysis_finish;
-    std::chrono::steady_clock::time_point receive_start;
-    std::chrono::steady_clock::time_point receive_finish;
     std::chrono::steady_clock::time_point avg_frame;
     size_t analysis_frame = 0;
     size_t loss_frame     = 0;
+    MainHeader main_header;
+    Tile j2k_tile;
+    std::once_flag is_main_packet_read;
+    std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table_base;
 
-    std::thread consumer([&] {
-        MainHeader main_header;
-        Tile j2k_tile;
-        // std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
+    auto analysis_process = [&]() -> void {
+        printf("analysis thread ready...\n");
         std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
 
-        analysis_start = std::chrono::steady_clock::now();
-        printf("analysis thread ready...\n");
+        avg_frame = std::chrono::steady_clock::now();
+        std::call_once(is_main_packet_read, [&]() -> void {
+            rtp_recv.receive();
+            auto& j2kpayload    = rtp_recv.access_payload();
+            auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
+            auto& pkt_data_size = rtp_recv.access_pkt_data_size();
+            J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
+            main_header.read(buf);
+            j2k_tile.init(main_header, buf);
+            j2k_tile.read(main_header, j2k_packet_table_base);
+            printf("main header read, seq: %d\n", rtp_recv.get_extended_sequence_number());
+        });
+        memcpy(&j2k_packet_table, &j2k_packet_table_base, sizeof(j2k_packet_table_base));
+
         while (true) {
             try {
                 if (unlikely(!rtp_recv.receive())) break;
@@ -117,36 +126,24 @@ int main(int argc, char** argv) {
                 auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
                 auto& pkt_data_size = rtp_recv.access_pkt_data_size();
 
-                // decoder
-                if (likely(j2kpayload.get_MH() == 0)) { // body packet
-
-                    J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
-                    size_t loop_count = 0;
-                    for (auto& p : j2k_packet_table) {
-                        // read_packet(p, buf);
-                        p.read_packet(buf);
-                        ++loop_count;
-                    }
-
-                    // フレーム終了
-                    ++analysis_frame;
-                    if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                        auto now = std::chrono::steady_clock::now();
-                        auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-                        printf("analysis_frame: %ld, avg: %.4fms, data in buf(unsafe): %ld\n", analysis_frame, (static_cast<float>(avg.count()) / 1'000) / out_flame, rtp_recv.access_recv_buf().get_num_data_unsafe());
-                        avg_frame = now;
-                    }
-                } else {
-                    // フレーム開始
-                    if (unlikely(main_header.empty())) {
-                        avg_frame = std::chrono::steady_clock::now();
-                        J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
-                        main_header.read(buf);
-                        j2k_tile.init(main_header, buf);
-                        j2k_tile.read(main_header, j2k_packet_table);
-                        printf("main header read, seq: %d\n", rtp_recv.get_extended_sequence_number());
-                    }
+                // body packet
+                J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
+                size_t loop_count = 0;
+                for (auto& p : j2k_packet_table) {
+                    // read_packet(p, buf);
+                    p.read_packet(buf);
+                    ++loop_count;
                 }
+
+                // フレーム終了
+                ++analysis_frame;
+                if (out_flame != 0 && analysis_frame % out_flame == 0) {
+                    auto now = std::chrono::steady_clock::now();
+                    auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
+                    printf("analysis_frame: %ld, avg: %.4fms, data in buf(unsafe): %ld\n", analysis_frame, (static_cast<float>(avg.count()) / 1'000) / out_flame, rtp_recv.access_recv_buf().get_num_data_unsafe());
+                    avg_frame = now;
+                }
+
             } catch (rtp_sequence_error& e) {
                 // メインパケットの出現までパケットを破棄
                 // 将来的には timestanp で制御
@@ -168,52 +165,33 @@ int main(int argc, char** argv) {
                 }
                 ++loss_frame;
             }
-
-            // std::this_thread::yield();
         }
-        analysis_finish = std::chrono::steady_clock::now();
-        printf("analysis finish: %ld\n", (analysis_finish - analysis_start).count());
-    });
-    // std::thread consumer([&] {
-    //     while (rtp_recv.receive()) {
-    //         std::this_thread::yield();
-    //     }
-    // });
+        printf("analysis finish\n");
+    };
+
+    std::thread analysis_t1;
+    std::thread analysis_t2;
 
     auto& r = rtp_recv.access_recv_buf();
-    std::thread produser([&r, &receive_start, &receive_finish]() {
-        receive_start = std::chrono::steady_clock::now();
+    std::thread receive_t([&r]() {
         printf("receive thread ready...\n");
-        // while (true) {
-        //     if (!r.receive()) break;
-        //     // std::this_thread::sleep_for(std::chrono::microseconds(10));
-        // }
         while (r.receive()) {
             // std::this_thread::yield();
         }
-        receive_finish = std::chrono::steady_clock::now();
-        printf("receive finish: %ld\n", (receive_finish - receive_start).count());
+        printf("receive finish\n");
     });
 
     if (CPU_COUNT(&affinity) != 0) {
-        if (auto result = pthread_setaffinity_np(produser.native_handle(), sizeof(affinity), &affinity); result != 0) {
+        if (auto result = pthread_setaffinity_np(receive_t.native_handle(), sizeof(affinity), &affinity); result != 0) {
             fprintf(stderr, "pthread_setaffinity_up() error: %d\n", result);
             exit(1);
         }
     }
-    // test code
-    cpu_set_t test;
-    CPU_ZERO(&test);
-    CPU_SET(2, &test);
-    pthread_setaffinity_np(consumer.native_handle(), sizeof(test), &test);
 
-    consumer.join();
-    produser.join();
+    analysis_t1.join();
+    analysis_t2.join();
+    receive_t.join();
 
-    auto diff = ((analysis_finish - analysis_start) - (receive_finish - receive_start)).count();
-    if (diff < 0) diff *= -1;
-
-    printf("finish diff: %ld\n", diff);
     printf("analysis frame: %ld\n", analysis_frame);
     printf("lost frame: %ld\n", loss_frame);
 #ifdef GENERATE_RECEIVE_PROBABILITY
@@ -228,37 +206,5 @@ int main(int argc, char** argv) {
     // printf("true%% : %lf\n", static_cast<double>(J2kBuf::count_true) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
     // printf("false%%: %lf\n", static_cast<double>(J2kBuf::count_false) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
 
-    return 0;
-}
-
-int read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf) {
-    // Precinct::get_number_of_subband() のメモリアクセスがボトルネック
-    // 実際には current_precinct の実体がキャッシュに乗っていないため，
-    // 一回目のアクセスに時間がかかる
-    static size_t call_count = 0;
-    call_count++;
-    if (unlikely(!payload_buf.get_bit())) { // empty packet
-        std::cout << "empty packet, call_count: " << call_count << std::endl;
-        return 1;
-    }
-
-    PrecinctSubband* current_ps;
-    const uint8_t num_subband = current_precinct->get_number_of_subband();
-    assume(num_subband <= 3);
-    for (uint8_t i = 0; i < num_subband; ++i) {
-        current_ps = current_precinct->get_psubband_ptr(i);
-#ifdef GENERATE_LOG
-        current_ps->read_packet_header(&payload_buf, current_precinct->get_resolution_level());
-#else
-        current_ps->read_packet_header(&payload_buf);
-#endif
-    }
-    payload_buf.check_FF();
-    payload_buf.r_fill();
-
-    for (uint8_t i = 0; i < num_subband; ++i) {
-        current_ps = current_precinct->get_psubband_ptr(i);
-        current_ps->get_codeblock_ptr(0)->set_data(&payload_buf);
-    }
     return 0;
 }
