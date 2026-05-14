@@ -25,7 +25,7 @@ void J2kBuf::reset(uint8_t* const in) {
     byte_pos = 0;
 }
 
-inline uint8_t J2kBuf::get_bit() {
+uint8_t J2kBuf::get_bit() {
     if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x80), 0.138)) {
         termination_check();
         if (unlikely(bit_purge == static_cast<uint8_t>(0xFF))) { // bit stuffing
@@ -53,7 +53,7 @@ uint32_t J2kBuf::get_bit(const uint8_t& n) {
     return out;
 }
 
-inline uint8_t J2kBuf::count_bit(const uint8_t& perd) {
+uint8_t J2kBuf::count_bit(const uint8_t& perd) {
     uint8_t output = 0;
     while (likely(byte_pos < buf_length)) {
         if (BRANCH_PROB(bit_pos & static_cast<uint8_t>(0x80), 0.138)) {
