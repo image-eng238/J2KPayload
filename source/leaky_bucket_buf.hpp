@@ -28,6 +28,7 @@ public:
     size_t get_num_data_unsafe() const { return num_data; }
 
 private:
+    ring_element* next_write;
     ring_element* next_pop;
     size_t num_data;
 
@@ -122,6 +123,7 @@ public:
 
     constexpr void set_udp(UDPReceiver* const);
     bool receive();
+    void distribute_packet();
     // int pop(uint8_t*&);
     static uint32_t get_seq(const uint8_t* const data) { return static_cast<uint32_t>(data[15] << 0x10) | static_cast<uint32_t>(data[2] << 0x8) | static_cast<uint32_t>(data[3]); }
 
@@ -132,8 +134,9 @@ public:
 private:
     ring_element* next_write; // receive からのみアクセス
     UDPReceiver* udp;         // receive のみからアクセス
-
     size_t tmp_num_data;
+
+    ring_element* last_write;
 
     lbb_access* current_buffer;
     size_t current_buffer_pos;

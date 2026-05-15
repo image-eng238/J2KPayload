@@ -164,9 +164,9 @@ private:
 
 class RTPReceiver_ref {
 public:
-    RTPReceiver_ref() : rtp_header{}, payload_header{}, pre_sequence_number{}, recv_buf{} {};
+    RTPReceiver_ref() : rtp_header{}, payload_header{}, pre_sequence_number{}, image_timestamp{}, recv_buf{} {};
     RTPReceiver_ref(lbb_access* const ptr)
-        : rtp_header{}, payload_header{}, pre_sequence_number{}, recv_buf{ptr} {};
+        : rtp_header{}, payload_header{}, pre_sequence_number{}, image_timestamp{}, recv_buf{ptr} {};
 
     RTPHeader& access_rtp() { return rtp_header; }
     J2KPayloadHeader& access_payload() { return payload_header; }
@@ -194,6 +194,13 @@ public:
             pre_sequence_number = extended_sequence_number;
 
             return true;
+        } else if (image_timestamp != rtp_header.get_timestamp() || image_timestamp == 0) {
+            pkt_data_ptr        = tmp_buf + rtp_header.get_header_length() + payload_header.get_header_length();
+            pkt_data_size       = pkt_size - (rtp_header.get_header_length() + payload_header.get_header_length());
+            pre_sequence_number = extended_sequence_number;
+            image_timestamp     = rtp_header.get_timestamp();
+
+            return true;
         } else {
             // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, ", pre_sequence_number, extended_sequence_number, extended_sequence_number - (pre_sequence_number + 1));
             rtp_sequence_error err;
@@ -213,6 +220,7 @@ public:
             [](const uint8_t* const data) -> bool { return static_cast<bool>(data[RTPHeader::get_header_length()] & 0xC0); }
         );
         pre_sequence_number = 0;
+        image_timestamp     = 0;
         return dest_packet;
     }
 
@@ -223,6 +231,7 @@ private:
     uint8_t* pkt_data_ptr;
     size_t pkt_data_size;
     uint32_t pre_sequence_number;
+    uint32_t image_timestamp;
 
     lbb_access* recv_buf;
 };
