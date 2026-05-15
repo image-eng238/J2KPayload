@@ -129,7 +129,7 @@ int main(int argc, char** argv) {
             std::unique_lock table_wait{main_header_lk};
             main_header_cond.wait(table_wait);
             avg_frame = std::chrono::steady_clock::now();
-            memcpy(&j2k_packet_table, &j2k_packet_table_base[0], sizeof(j2k_table_t));
+            memcpy(&j2k_packet_table_base[1], &j2k_packet_table_base[0], sizeof(j2k_table_t));
             printf("(t%ld): copy j2k table\n", t_num);
         }
 
@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
         }
         printf("(t%ld): analysis finish\n", t_num);
         analysis_frame_sum += analysis_frame;
-        loss_frame_sum += loss_frame_sum;
+        loss_frame_sum += loss_frame;
     };
 
     std::array<std::thread, leaky_bucket_buf::NUM_BUFFER> analysis_threads;
@@ -209,6 +209,15 @@ int main(int argc, char** argv) {
             exit(1);
         }
     }
+    // for (size_t i = 0; i < leaky_bucket_buf::NUM_BUFFER; ++i) {
+    //     cpu_set_t affinity_a;
+    //     CPU_ZERO(&affinity_a);
+    //     CPU_SET(i + 1, &affinity_a);
+    //     if (auto result = pthread_setaffinity_np(analysis_threads[i].native_handle(), sizeof(affinity_a), &affinity_a); result != 0) {
+    //         fprintf(stderr, "pthread_setaffinity_up() error: %d\n", result);
+    //         exit(1);
+    //     }
+    // }
 
     for (auto& th : analysis_threads) th.join();
     receive_t.join();
