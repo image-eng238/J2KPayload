@@ -180,16 +180,22 @@ int main(int argc, char** argv) {
     //     }
     // });
 
-    auto& r = rtp_recv.access_recv_buf();
-    std::thread produser([&r, &receive_start, &receive_finish]() {
-        receive_start = std::chrono::steady_clock::now();
+    std::thread produser([&receive_start, &receive_finish, &rtp_recv]() {
+        auto& r                      = rtp_recv.access_recv_buf();
+        uint32_t pre_sequence_number = 0;
+        receive_start                = std::chrono::steady_clock::now();
+
         printf("receive thread ready...\n");
-        // while (true) {
-        //     if (!r.receive()) break;
-        //     // std::this_thread::sleep_for(std::chrono::microseconds(10));
-        // }
-        while (r.receive()) {
-            // std::this_thread::yield();
+        while (true) {
+            auto result = r.receive([&](const uint8_t* const data) -> bool {
+                const auto sequence_number = J2KPayloadHeader_trait::get_extended_sequence_number(data);
+                if (likely((sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (sequence_number == 0))) {
+                    return true;
+                } else {
+                    return false;
+                }
+            });
+            if (!result) break;
         }
         receive_finish = std::chrono::steady_clock::now();
         printf("receive finish: %ld\n", (receive_finish - receive_start).count());

@@ -8,14 +8,15 @@
 #define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
 
 leaky_bucket_buf::leaky_bucket_buf()
-    : next_write{buf_list}, next_pop{buf_list}, udp{}, current_num_data{}, tmp_num_data{}, mtx{}, cond{}, buf_list{} {
+    : next_write{buf_list}, next_pop{buf_list}, udp{}, current_num_data{}, tmp_num_data{}, mtx{}, cond{}, buf_list{}, wait_packet{}, num_wait_packet{}, buffer{} {
 
     for (size_t i = 0; i < NUM_BUFFER - 1; ++i) {
         buf_list[i].next_ptr = &buf_list[i + 1];
         // buf_list[i].data_size = 0;
-        // buf_list[i].data     = &buffer[i * BUFFER_SIZE];
+        buf_list[i].data     = buffer[i];
     }
     buf_list[NUM_BUFFER - 1].next_ptr = buf_list;
+    buf_list[NUM_BUFFER - 1].data     = buffer[NUM_BUFFER - 1];
     // buf_list[NUM_BUFFER - 1].data_size = 0;
     // buf_list[NUM_BUFFER - 1].data     = &buffer[(NUM_BUFFER - 1) * BUFFER_SIZE];
 }
@@ -25,65 +26,6 @@ leaky_bucket_buf::leaky_bucket_buf(UDPReceiver* const ptr) : leaky_bucket_buf{} 
 
 constexpr void leaky_bucket_buf::set_udp(UDPReceiver* const ptr) {
     this->udp = ptr;
-}
-
-bool leaky_bucket_buf::receive() {
-    // uint8_t tmp_buf[BUFFER_SIZE];
-    // int tmp_data_size = udp->receive(tmp_buf, BUFFER_SIZE);
-
-    // if (tmp_data_size == -1) {
-    //     if (errno == EAGAIN) {
-    //         return true;
-    //     } else {
-    //         perror("receive error");
-    //         return false;
-    //     }
-    // }
-
-    // assert(current_num_data + tmp_num_data < NUM_BUFFER); // buffer leak
-
-    auto& writing = next_write;
-    LOAD_INTO_CACHE(writing, opt_macro::WRITE, opt_macro::HIGH_TEMPORAL);
-    // assert(writing->empty());
-
-    // memcpy(writing->data, tmp_buf, tmp_data_size);
-    // writing->data_size = tmp_data_size;
-    writing->data_size = static_cast<int>(udp->receive(writing->data, BUFFER_SIZE));
-    if (writing->data_size == -1) {
-        if (BRANCH_PROB(errno == EAGAIN, 1.0)) {
-#ifdef GENERATE_RECEIVE_PROBABILITY
-            ++count_agaein;
-#endif
-            return true;
-        } else {
-            perror("receive error");
-            return false;
-        }
-    }
-#ifdef GENERATE_RECEIVE_PROBABILITY
-    ++count_receive;
-#endif
-
-    bool output = writing->data[0] & 0x80;
-
-    // ここで writing と next_ptr の順序を確認し，ソートする．
-    // RTP の場合はシーケンス番号をチェックしてソート．
-
-    next_write = writing->next_ptr;
-
-    std::unique_lock lk(mtx, std::defer_lock);
-    if (lk.try_lock()) {
-        current_num_data += 1 + tmp_num_data;
-        if (tmp_num_data != 0) tmp_num_data = 0;
-        // assert(current_num_data < NUM_BUFFER);
-        lk.unlock();
-        cond.notify_one();
-    } else {
-        ++tmp_num_data;
-        // スレッドセーフでないが current_num_data は他スレッドから操作は減算のみであるためアサーションに使用
-        // assert(current_num_data + tmp_num_data < NUM_BUFFER);
-    }
-    return output;
 }
 
 int leaky_bucket_buf::pop(uint8_t*& ptr) {
