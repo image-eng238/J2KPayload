@@ -1,11 +1,14 @@
 #pragma once
 
-#include <cstdint>
-#include <cstddef>
+#include <condition_variable>
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <exception>
+#include <mutex>
 #include <thread>
+#include <utility>
 #define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
 
 #include "UDP.hpp"
@@ -31,27 +34,6 @@ namespace RTPHeader_trait {
     constexpr uint32_t get_timestamp(const uint8_t* const pointer) { return pointer[4] << 24 | pointer[5] << 16 | pointer[6] << 8 | pointer[7]; }; // 32 bits
     constexpr uint32_t get_SSRC(const uint8_t* const pointer) { return pointer[8] << 24 | pointer[9] << 16 | pointer[10] << 8 | pointer[11]; };    // 32 bits
 }
-class RTPHeader {
-public:
-    RTPHeader() = default;
-    RTPHeader(const uint8_t* const ptr) : pointer{ptr} {}
-
-    void set_ptr(const uint8_t* const ptr) { pointer = ptr; }
-
-    uint8_t get_V() const { return RTPHeader_trait::get_V(pointer); };                             // version: 2 bits 0b10で固定
-    uint8_t get_P() const { return RTPHeader_trait::get_P(pointer); };                             // padding: 1 bit
-    uint8_t get_X() const { return RTPHeader_trait::get_X(pointer); };                             // extension: 1 bit
-    uint8_t get_CC() const { return RTPHeader_trait::get_CC(pointer); };                           // CSRC_count: 4 bits
-    uint8_t get_M() const { return RTPHeader_trait::get_M(pointer); };                             // marker: 1 bit
-    uint8_t get_PT() const { return RTPHeader_trait::get_PT(pointer); };                           // payload_type: 7 bits
-    uint16_t get_sequence_number() const { return RTPHeader_trait::get_sequence_number(pointer); } // 16 bits
-    uint32_t get_timestamp() const { return RTPHeader_trait::get_timestamp(pointer); };            // 32 bits
-    uint32_t get_SSRC() const { return RTPHeader_trait::get_SSRC(pointer); };                      // 32 bits
-    static constexpr uint8_t get_header_length() { return RTPHeader_trait::get_header_length(); }
-
-private:
-    const uint8_t* pointer;
-};
 namespace J2KPayloadHeader_trait {
     constexpr uint8_t length = 8;
     constexpr uint8_t get_header_length() { return length; }
@@ -83,7 +65,31 @@ namespace J2KPayloadHeader_trait {
 
     constexpr uint16_t get_body_POS(const uint8_t* const pointer) { return (pointer[4] << 4) | ((pointer[5] & 0xF0) >> 4); }               // Resyns Point Offset: 12 bits
     constexpr uint32_t get_body_PID(const uint8_t* const pointer) { return (pointer[5] & 0x0F << 16) | (pointer[6] << 8) | (pointer[7]); } // Precinct Identifier: 20 bits
+
+    constexpr uint32_t get_extended_sequence_number(const uint8_t* const pointer) { return (get_ESEQ(pointer + length) << 16) || RTPHeader_trait::get_sequence_number(pointer); }
 }
+
+class RTPHeader {
+public:
+    RTPHeader() = default;
+    RTPHeader(const uint8_t* const ptr) : pointer{ptr} {}
+
+    void set_ptr(const uint8_t* const ptr) { pointer = ptr; }
+
+    uint8_t get_V() const { return RTPHeader_trait::get_V(pointer); };                             // version: 2 bits 0b10で固定
+    uint8_t get_P() const { return RTPHeader_trait::get_P(pointer); };                             // padding: 1 bit
+    uint8_t get_X() const { return RTPHeader_trait::get_X(pointer); };                             // extension: 1 bit
+    uint8_t get_CC() const { return RTPHeader_trait::get_CC(pointer); };                           // CSRC_count: 4 bits
+    uint8_t get_M() const { return RTPHeader_trait::get_M(pointer); };                             // marker: 1 bit
+    uint8_t get_PT() const { return RTPHeader_trait::get_PT(pointer); };                           // payload_type: 7 bits
+    uint16_t get_sequence_number() const { return RTPHeader_trait::get_sequence_number(pointer); } // 16 bits
+    uint32_t get_timestamp() const { return RTPHeader_trait::get_timestamp(pointer); };            // 32 bits
+    uint32_t get_SSRC() const { return RTPHeader_trait::get_SSRC(pointer); };                      // 32 bits
+    static constexpr uint8_t get_header_length() { return RTPHeader_trait::get_header_length(); }
+
+private:
+    const uint8_t* pointer;
+};
 
 class J2KPayloadHeader {
 public:
@@ -205,4 +211,67 @@ private:
     uint8_t* use_buf;
     // BufferPool<uint8_t, MAX_PACKET_SIZE, NUM_BUFFER> recv_buf;
     leaky_bucket_buf recv_buf;
+};
+
+class RTPBuffer {
+public:
+    static constexpr size_t RTP_HEADER_SIZE = RTPHeader_trait::length + J2KPayloadHeader_trait::length;
+    static constexpr size_t MAX_PACKET_SIZE = 1384;
+    static constexpr size_t BUFFER_SIZE     = (MAX_PACKET_SIZE - RTP_HEADER_SIZE) * 5000;
+    RTPBuffer() {};
+    bool sock_bind(const char* const address, const uint16_t port) {
+        return udp.sock_bind(address, port);
+    }
+
+    ssize_t receive() {
+        uint8_t tmp_buf[MAX_PACKET_SIZE];
+        const auto tmp_data_size = udp.receive(tmp_buf, MAX_PACKET_SIZE);
+        if (tmp_data_size == -1) {
+            if (BRANCH_PROB(errno == EAGAIN, 1.0)) {
+                return tmp_data_size;
+            } else {
+                perror("receive error");
+                return tmp_data_size;
+            }
+        }
+
+        const auto sequence_number = J2KPayloadHeader_trait::get_extended_sequence_number(tmp_buf);
+        if (likely((sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (sequence_number == 0))) {
+            pre_sequence_number = sequence_number;
+        } else {
+            return -1;
+        }
+
+        const auto j2k_packet_size = tmp_data_size - RTP_HEADER_SIZE;
+        std::unique_lock lk{mtx};
+        if (buf_pos + j2k_packet_size >= BUFFER_SIZE) {
+            assert(pre_end_pos == 0);
+            pre_end_pos = std::exchange(buf_pos, 0);
+        }
+        memcpy(buffer + buf_pos, tmp_buf + RTP_HEADER_SIZE, j2k_packet_size);
+        buf_pos += j2k_packet_size;
+        cond.notify_one();
+    }
+
+    size_t current_size() {
+        std::unique_lock lk{mtx};
+        cond.wait(lk, [this] { return (pre_end_pos == 0 && buf_pos != 0) || (pre_end_pos != 0); });
+        if (pre_end_pos != 0) {
+            return std::exchange(pre_end_pos, 0);
+        }
+        return buf_pos;
+    }
+
+    uint8_t* get_buffer_ptr() { return buffer; }
+
+private:
+    UDPReceiver udp;
+
+    uint32_t pre_sequence_number;
+
+    size_t buf_pos;
+    size_t pre_end_pos;
+    uint8_t buffer[BUFFER_SIZE];
+    std::mutex mtx;
+    std::condition_variable cond;
 };
