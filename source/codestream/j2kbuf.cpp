@@ -117,14 +117,14 @@ uint8_t* J2kBuf::make_packet_data(const size_t& len, uint8_t* const ptr) {
     ++call_count;
     r_fill();
     if (byte_pos + len < buf_length) {
-        memcpy(ptr, get_ptr(), len);
+        // memcpy(ptr, get_ptr(), len);
         byte_pos += len;
     } else {
         uint8_t* dest_ptr      = ptr;
         const uint8_t* src_ptr = get_ptr();
         size_t cpd             = len;
         size_t cplen           = buf_length - byte_pos;
-        memcpy(dest_ptr, src_ptr, cplen);
+        // memcpy(dest_ptr, src_ptr, cplen);
         receive();
 
         for (size_t i = 0; i < 5; ++i) {
@@ -132,7 +132,7 @@ uint8_t* J2kBuf::make_packet_data(const size_t& len, uint8_t* const ptr) {
             src_ptr = get_ptr();
             cpd -= cplen;
             cplen = std::min(cpd, buf_length);
-            memcpy(dest_ptr, src_ptr, cplen);
+            // memcpy(dest_ptr, src_ptr, cplen);
             if (cplen == buf_length) {
                 receive();
             } else {
