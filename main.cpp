@@ -87,9 +87,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    RTPReceiver rtp_recv;
+    RTPBuffer rtp_recv;
     if (addr.empty() && port == 0) {
-        rtp_recv.sock_bind();
+        rtp_recv.sock_bind("127.0.0.1", 50001);
     } else {
         rtp_recv.sock_bind(addr.data(), port);
     }
@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
     size_t analysis_frame = 0;
     size_t loss_frame     = 0;
 
-    std::thread consumer([&] {
+    std::thread analysis_thread([&] {
         MainHeader main_header;
         Tile j2k_tile;
         // std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
@@ -174,18 +174,22 @@ int main(int argc, char** argv) {
         analysis_finish = std::chrono::steady_clock::now();
         printf("analysis finish: %ld\n", (analysis_finish - analysis_start).count());
     });
-    // std::thread consumer([&] {
+    // std::thread analysis_thread([&] {
     //     while (rtp_recv.receive()) {
     //         std::this_thread::yield();
     //     }
     // });
 
-    std::thread produser([&receive_start, &receive_finish, &rtp_recv]() {
-        auto& r                      = rtp_recv.access_recv_buf();
-        uint32_t pre_sequence_number = 0;
-        receive_start                = std::chrono::steady_clock::now();
-
+    std::thread receive_thread([&]() {
+        receive_start = std::chrono::steady_clock::now();
         printf("receive thread ready...\n");
+
+        while (true) {
+            auto result = rtp_recv.receive();
+            if (result == -1) {
+            }
+        }
+
         while (true) {
             auto result = r.receive([&](const uint8_t* const data) -> bool {
                 const auto sequence_number = J2KPayloadHeader_trait::get_extended_sequence_number(data);
@@ -202,7 +206,7 @@ int main(int argc, char** argv) {
     });
 
     if (CPU_COUNT(&affinity) != 0) {
-        if (auto result = pthread_setaffinity_np(produser.native_handle(), sizeof(affinity), &affinity); result != 0) {
+        if (auto result = pthread_setaffinity_np(receive_thread.native_handle(), sizeof(affinity), &affinity); result != 0) {
             fprintf(stderr, "pthread_setaffinity_up() error: %d\n", result);
             exit(1);
         }
@@ -211,10 +215,10 @@ int main(int argc, char** argv) {
     cpu_set_t test;
     CPU_ZERO(&test);
     CPU_SET(2, &test);
-    pthread_setaffinity_np(consumer.native_handle(), sizeof(test), &test);
+    pthread_setaffinity_np(analysis_thread.native_handle(), sizeof(test), &test);
 
-    consumer.join();
-    produser.join();
+    analysis_thread.join();
+    receive_thread.join();
 
     auto diff = ((analysis_finish - analysis_start) - (receive_finish - receive_start)).count();
     if (diff < 0) diff *= -1;
