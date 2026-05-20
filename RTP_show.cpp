@@ -4,6 +4,7 @@
 #include <vector>
 #include <string_view>
 #include <cstdio>
+#include <thread>
 
 int main(int argc, char** argv) {
     std::vector<std::string_view> arg_view(argc - 1);
@@ -67,6 +68,15 @@ int main(int argc, char** argv) {
             printf("  POS = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_body_POS(payload)));
             printf("  PID = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_body_PID(payload)));
         };
+
+        printf("extended_sequence_number = %d\n", J2KPayloadHeader_trait::get_extended_sequence_number(pktbuf));
+
+        int c = 0;
+        while (true) {
+            c = fgetc(stdin);
+            if (c != EOF) break;
+        }
+        if (c != '\n') break;
     }
 
     return 0;
