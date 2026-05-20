@@ -18,6 +18,19 @@ struct rtp_sequence_error {
     uint32_t err_sq;
 };
 
+namespace RTPHeader_trait {
+    constexpr uint8_t length = 12;
+    constexpr uint8_t get_header_length() { return RTPHeader_trait::length; }
+    constexpr uint8_t get_V(const uint8_t* const pointer) { return (pointer[0] & 0xC0) >> 6; };                                                    // version: 2 bits 0b10で固定
+    constexpr uint8_t get_P(const uint8_t* const pointer) { return (pointer[0] & 0x20) >> 5; };                                                    // padding: 1 bit
+    constexpr uint8_t get_X(const uint8_t* const pointer) { return (pointer[0] & 0x10) >> 4; };                                                    // extension: 1 bit
+    constexpr uint8_t get_CC(const uint8_t* const pointer) { return pointer[0] & 0x0F; };                                                          // CSRC_count: 4 bits
+    constexpr uint8_t get_M(const uint8_t* const pointer) { return (pointer[1] & 0x80) >> 7; };                                                    // marker: 1 bit
+    constexpr uint8_t get_PT(const uint8_t* const pointer) { return pointer[1] & 0x7F; };                                                          // payload_type: 7 bits
+    constexpr uint16_t get_sequence_number(const uint8_t* const pointer) { return pointer[2] << 8 | pointer[3]; };                                 // 16 bits
+    constexpr uint32_t get_timestamp(const uint8_t* const pointer) { return pointer[4] << 24 | pointer[5] << 16 | pointer[6] << 8 | pointer[7]; }; // 32 bits
+    constexpr uint32_t get_SSRC(const uint8_t* const pointer) { return pointer[8] << 24 | pointer[9] << 16 | pointer[10] << 8 | pointer[11]; };    // 32 bits
+}
 class RTPHeader {
 public:
     RTPHeader() = default;
@@ -25,21 +38,52 @@ public:
 
     void set_ptr(const uint8_t* const ptr) { pointer = ptr; }
 
-    uint8_t get_V() const { return pointer[0] & 0xC0; };                                                           // version: 2 bits 0b10で固定
-    uint8_t get_P() const { return pointer[0] & 0x20; };                                                           // padding: 1 bit
-    uint8_t get_X() const { return pointer[0] & 0x10; };                                                           // extension: 1 bit
-    uint8_t get_CC() const { return pointer[0] & 0x0F; };                                                          // CSRC_count: 4 bits
-    uint8_t get_M() const { return pointer[1] & 0x80; };                                                           // marker: 1 bit
-    uint8_t get_PT() const { return pointer[1] & 0x7F; };                                                          // payload_type: 7 bits
-    uint16_t get_sequence_number() const { return pointer[2] << 8 | pointer[3]; };                                 // 16 bits
-    uint32_t get_timestamp() const { return pointer[4] << 24 | pointer[5] << 16 | pointer[6] << 8 | pointer[7]; }; // 32 bits
-    uint32_t get_SSRC() const { return pointer[8] << 24 | pointer[9] << 16 | pointer[10] << 8 | pointer[11]; };    // 32 bits
-    static constexpr uint8_t get_header_length() { return length; }
+    uint8_t get_V() const { return RTPHeader_trait::get_V(pointer); };                             // version: 2 bits 0b10で固定
+    uint8_t get_P() const { return RTPHeader_trait::get_P(pointer); };                             // padding: 1 bit
+    uint8_t get_X() const { return RTPHeader_trait::get_X(pointer); };                             // extension: 1 bit
+    uint8_t get_CC() const { return RTPHeader_trait::get_CC(pointer); };                           // CSRC_count: 4 bits
+    uint8_t get_M() const { return RTPHeader_trait::get_M(pointer); };                             // marker: 1 bit
+    uint8_t get_PT() const { return RTPHeader_trait::get_PT(pointer); };                           // payload_type: 7 bits
+    uint16_t get_sequence_number() const { return RTPHeader_trait::get_sequence_number(pointer); } // 16 bits
+    uint32_t get_timestamp() const { return RTPHeader_trait::get_timestamp(pointer); };            // 32 bits
+    uint32_t get_SSRC() const { return RTPHeader_trait::get_SSRC(pointer); };                      // 32 bits
+    static constexpr uint8_t get_header_length() { return RTPHeader_trait::get_header_length(); }
 
 private:
     const uint8_t* pointer;
-    static constexpr uint8_t length = 12;
 };
+namespace J2KPayloadHeader_trait {
+    constexpr uint8_t length = 8;
+    constexpr uint8_t get_header_length() { return length; }
+    constexpr uint8_t get_MH(const uint8_t* const pointer) { return (pointer[0] & 0xC0) >> 6; }                    // Codestream Main Header Presence: 2 bits
+    constexpr uint8_t get_TP(const uint8_t* const pointer) { return pointer[0] & 0x38; }                           // Image Type: 3 bits
+    constexpr uint16_t get_PTSTAMP(const uint8_t* const pointer) { return (pointer[1] & 0x0F) << 8 | pointer[2]; } // Precision Timestamp: 12 bits
+    constexpr uint8_t get_ESEQ(const uint8_t* const pointer) { return pointer[3]; }                                // Extended Sequence Number High-Order Bits: 8 bits
+    // main
+    constexpr uint8_t get_main_ORDH(const uint8_t* const pointer) { return pointer[0] & 0x07; }         // Progression Order Flag, Main Packet: 3 bits
+    constexpr uint8_t get_main_P(const uint8_t* const pointer) { return (pointer[1] & 0x80) >> 7; }     // Precision Timestamp Presence: 1 bit
+    constexpr uint8_t get_main_XTRAC(const uint8_t* const pointer) { return (pointer[1] & 0x70) >> 4; } // Extension Payload Length: 3 bits
+    constexpr uint16_t get_main_PTSTAMP(const uint8_t* const pointer) { return get_PTSTAMP(pointer); }  // Precision Timestamp: 12 bits
+    constexpr uint8_t get_main_ESEQ(const uint8_t* const pointer) { return get_ESEQ(pointer); }         // Extended Sequence Number High-Order Bits: 8 bits
+
+    constexpr uint8_t get_main_R(const uint8_t* const pointer) { return (pointer[4] & 0x80) >> 7; }    // Codestream Main Header Reuse: 1 bit
+    constexpr uint8_t get_main_S(const uint8_t* const pointer) { return pointer[4] & (0x40) >> 6; }    // Parameterized Colorspace Presence: 1 bit
+    constexpr uint8_t get_main_C(const uint8_t* const pointer) { return pointer[4] & (0x20) >> 5; }    // Code-Block Caching Usage: 1 bit
+    constexpr uint8_t get_main_RSVD(const uint8_t* const pointer) { return (pointer[4] & 0x1E) >> 1; } // Reserved: 4 bits
+    constexpr uint8_t get_main_RANGE(const uint8_t* const pointer) { return pointer[4] & 0x01; }       // Video Full Range Usage: 1 bit
+    constexpr uint8_t get_main_PRIMS(const uint8_t* const pointer) { return pointer[5]; }              // Color Primaries: 8 bits
+    constexpr uint8_t get_main_TRANS(const uint8_t* const pointer) { return pointer[6]; }              // Transfer Characteristice: 8 bits
+    constexpr uint8_t get_main_MAT(const uint8_t* const pointer) { return pointer[7]; }                // Colo Matrix Coefficients: 8 bits
+    // body
+    constexpr uint8_t get_body_RES(const uint8_t* const pointer) { return pointer[0] & 0x07; }         // Resolution Levels: 3 bits
+    constexpr uint8_t get_body_ORDB(const uint8_t* const pointer) { return (pointer[1] & 0x80) >> 7; } // Progression Order Flag, Body Packet: 1 bit is_resync_point
+    constexpr uint8_t get_body_QUAL(const uint8_t* const pointer) { return (pointer[1] & 0x70) >> 4; } // Quality Layers: 3 bit
+    constexpr uint16_t get_body_PTSTAMP(const uint8_t* const pointer) { return get_PTSTAMP(pointer); } // Precision Timestamp: 12 bits
+    constexpr uint8_t get_body_ESEQ(const uint8_t* const pointer) { return get_ESEQ(pointer); }        // Extended Sequence Number High-Order Bits: 8 bits
+
+    constexpr uint16_t get_body_POS(const uint8_t* const pointer) { return (pointer[4] << 4) | ((pointer[5] & 0xF0) >> 4); }               // Resyns Point Offset: 12 bits
+    constexpr uint32_t get_body_PID(const uint8_t* const pointer) { return (pointer[5] & 0x0F << 16) | (pointer[6] << 8) | (pointer[7]); } // Precinct Identifier: 20 bits
+}
 
 class J2KPayloadHeader {
 public:
@@ -48,37 +92,37 @@ public:
 
     void set_ptr(const uint8_t* const ptr) { pointer = ptr; }
 
-    uint8_t get_MH() const { return pointer[0] & 0xC0; }                           // Codestream Main Header Presence: 2 bits
-    uint8_t get_TP() const { return pointer[0] & 0x38; }                           // Image Type: 3 bits
-    uint16_t get_PTSTAMP() const { return (pointer[1] & 0x0F) << 8 | pointer[2]; } // Precision Timestamp: 12 bits
-    uint8_t get_ESEQ() const { return pointer[3]; }                                // Extended Sequence Number High-Order Bits: 8 bits
-    static constexpr uint8_t get_header_length() { return length; }
+    uint8_t get_MH() const { return J2KPayloadHeader_trait::get_MH(pointer); }            // Codestream Main Header Presence: 2 bits
+    uint8_t get_TP() const { return J2KPayloadHeader_trait::get_TP(pointer); }            // Image Type: 3 bits
+    uint16_t get_PTSTAMP() const { return J2KPayloadHeader_trait::get_PTSTAMP(pointer); } // Precision Timestamp: 12 bits
+    uint8_t get_ESEQ() const { return J2KPayloadHeader_trait::get_ESEQ(pointer); }        // Extended Sequence Number High-Order Bits: 8 bits
+    static constexpr uint8_t get_header_length() { return J2KPayloadHeader_trait::get_header_length(); }
 
     // main
-    uint8_t get_main_ORDH() const { return pointer[0] & 0x07; }  // Progression Order Flag, Main Packet: 3 bits
-    uint8_t get_main_P() const { return pointer[1] & 0x80; }     // Precision Timestamp Presence: 1 bit
-    uint8_t get_main_XTRAC() const { return pointer[1] & 0x70; } // Extension Payload Length: 3 bits
-    uint16_t get_main_PTSTAMP() const { return get_PTSTAMP(); }  // Precision Timestamp: 12 bits
-    uint8_t get_main_ESEQ() const { return get_ESEQ(); }         // Extended Sequence Number High-Order Bits: 8 bits
+    uint8_t get_main_ORDH() const { return J2KPayloadHeader_trait::get_main_ORDH(pointer); }        // Progression Order Flag, Main Packet: 3 bits
+    uint8_t get_main_P() const { return J2KPayloadHeader_trait::get_main_P(pointer); }              // Precision Timestamp Presence: 1 bit
+    uint8_t get_main_XTRAC() const { return J2KPayloadHeader_trait::get_main_XTRAC(pointer); }      // Extension Payload Length: 3 bits
+    uint16_t get_main_PTSTAMP() const { return J2KPayloadHeader_trait::get_main_PTSTAMP(pointer); } // Precision Timestamp: 12 bits
+    uint8_t get_main_ESEQ() const { return J2KPayloadHeader_trait::get_main_ESEQ(pointer); }        // Extended Sequence Number High-Order Bits: 8 bits
 
-    uint8_t get_main_R() const { return pointer[4] & 0x80; }     // Codestream Main Header Reuse: 1 bit
-    uint8_t get_main_S() const { return pointer[4] & 0x40; }     // Parameterized Colorspace Presence: 1 bit
-    uint8_t get_main_C() const { return pointer[4] & 0x20; }     // Code-Block Caching Usage: 1 bit
-    uint8_t get_main_RSVD() const { return pointer[4] & 0x1E; }  // Reserved: 4 bits
-    uint8_t get_main_RANGE() const { return pointer[4] & 0x01; } // Video Full Range Usage: 1 bit
-    uint8_t get_main_PRIMS() const { return pointer[5]; }        // Color Primaries: 8 bits
-    uint8_t get_main_TRANS() const { return pointer[6]; }        // Transfer Characteristice: 8 bits
-    uint8_t get_main_MAT() const { return pointer[7]; }          // Colo Matrix Coefficients: 8 bits
+    uint8_t get_main_R() const { return J2KPayloadHeader_trait::get_main_R(pointer); }         // Codestream Main Header Reuse: 1 bit
+    uint8_t get_main_S() const { return J2KPayloadHeader_trait::get_main_S(pointer); }         // Parameterized Colorspace Presence: 1 bit
+    uint8_t get_main_C() const { return J2KPayloadHeader_trait::get_main_C(pointer); }         // Code-Block Caching Usage: 1 bit
+    uint8_t get_main_RSVD() const { return J2KPayloadHeader_trait::get_main_RSVD(pointer); }   // Reserved: 4 bits
+    uint8_t get_main_RANGE() const { return J2KPayloadHeader_trait::get_main_RANGE(pointer); } // Video Full Range Usage: 1 bit
+    uint8_t get_main_PRIMS() const { return J2KPayloadHeader_trait::get_main_PRIMS(pointer); } // Color Primaries: 8 bits
+    uint8_t get_main_TRANS() const { return J2KPayloadHeader_trait::get_main_TRANS(pointer); } // Transfer Characteristice: 8 bits
+    uint8_t get_main_MAT() const { return J2KPayloadHeader_trait::get_main_MAT(pointer); }     // Colo Matrix Coefficients: 8 bits
 
     // body
-    uint8_t get_body_RES() const { return pointer[0] & 0x07; }  // Resolution Levels: 3 bits
-    uint8_t get_body_ORDB() const { return pointer[1] & 0x80; } // Progression Order Flag, Body Packet: 1 bit is_resync_point
-    uint8_t get_body_QUAL() const { return pointer[1] & 0x70; } // Quality Layers: 3 bit
-    uint16_t get_body_PTSTAMP() const { return get_PTSTAMP(); } // Precision Timestamp: 12 bits
-    uint8_t get_body_ESEQ() const { return get_ESEQ(); }        // Extended Sequence Number High-Order Bits: 8 bits
+    uint8_t get_body_RES() const { return J2KPayloadHeader_trait::get_body_RES(pointer); }          // Resolution Levels: 3 bits
+    uint8_t get_body_ORDB() const { return J2KPayloadHeader_trait::get_body_ORDB(pointer); }        // Progression Order Flag, Body Packet: 1 bit is_resync_point
+    uint8_t get_body_QUAL() const { return J2KPayloadHeader_trait::get_body_QUAL(pointer); }        // Quality Layers: 3 bit
+    uint16_t get_body_PTSTAMP() const { return J2KPayloadHeader_trait::get_body_PTSTAMP(pointer); } // Precision Timestamp: 12 bits
+    uint8_t get_body_ESEQ() const { return J2KPayloadHeader_trait::get_body_ESEQ(pointer); }        // Extended Sequence Number High-Order Bits: 8 bits
 
-    uint16_t get_body_POS() const { return (pointer[4] << 4) | ((pointer[5] & 0xF0) >> 4); }               // Resyns Point Offset: 12 bits
-    uint32_t get_body_PID() const { return (pointer[5] & 0x0F << 16) | (pointer[6] << 8) | (pointer[7]); } // Precinct Identifier: 20 bits
+    uint16_t get_body_POS() const { return J2KPayloadHeader_trait::get_body_POS(pointer); } // Resyns Point Offset: 12 bits
+    uint32_t get_body_PID() const { return J2KPayloadHeader_trait::get_body_PID(pointer); } // Precinct Identifier: 20 bits
 
 private:
     const uint8_t* pointer;
