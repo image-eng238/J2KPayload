@@ -181,7 +181,7 @@ public:
             throw err;
         }
     }
-    size_t dest_packt() {
+    size_t dest_packet() {
         // auto dest_packet    = recv_buf.dest([](const uint8_t* const data) { return static_cast<bool>(data[RTPHeader::get_header_length()] & 0xC0); });
         // pre_sequence_number = 0;
         auto dest_packet = recv_buf.dest(

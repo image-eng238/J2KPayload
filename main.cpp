@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
             } catch (rtp_sequence_error& e) {
                 // メインパケットの出現までパケットを破棄
                 // 将来的には timestanp で制御
-                auto dest_packet = rtp_recv.dest_packt();
+                auto dest_packet = rtp_recv.dest_packet();
                 // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld, frame: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet, analysis_frame);
                 fprintf(stderr, "RTP error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet);
                 ++loss_frame;
