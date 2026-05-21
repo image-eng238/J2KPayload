@@ -195,7 +195,7 @@ public:
         pre_sequence_number = 0;
         recv_buf.clear();
         return recv_buf.dest(
-            [](const uint8_t* const data) -> bool { return static_cast<bool>(data[J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)]); }
+            [](const uint8_t* const data) -> bool { return static_cast<bool>(J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)); }
         );
     }
 
