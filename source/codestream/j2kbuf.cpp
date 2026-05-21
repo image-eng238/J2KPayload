@@ -6,7 +6,7 @@
 
 void J2kBuf::step(const int64_t& in) {
     advance_byte_pos(in);
-    if (recv->access_payload().get_MH() == 0) termination_check();
+    if (static_cast<bool>(recv->access_payload().get_MH())) termination_check();
 }
 void J2kBuf::r_fill() {
     if (BRANCH_PROB(!(bit_pos & 0x80), 0.265)) {

@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
                 auto& pkt_data_size = rtp_recv.access_pkt_data_size();
 
                 // decoder
-                if (likely(j2kpayload.get_MH() == 0)) { // body packet
+                if (likely(static_cast<bool>(j2kpayload.get_MH()))) { // body packet
 
                     J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
                     size_t loop_count = 0;
