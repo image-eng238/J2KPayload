@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
                 fprintf(stderr, "RTP error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet);
                 ++loss_frame;
             } catch (J2K_packet_error& e) {
-                auto dest_packet = rtp_recv.dest_packt();
+                auto dest_packet = rtp_recv.dest_all_packet();
                 switch (e.type) {
                     case J2K_packet_error::empty_packet:
                         fprintf(stderr, "j2k packet error analysis_frame: %ld, discarded packsts: %ld, data in buf(unsafe): %ld\n", analysis_frame, dest_packet, rtp_recv.access_recv_buf().get_num_data_unsafe());

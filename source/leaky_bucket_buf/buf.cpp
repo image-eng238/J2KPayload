@@ -106,3 +106,11 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
 
     return out;
 }
+
+void leaky_bucket_buf::clear() {
+    std::unique_lock lk{mtx};
+    next_write       = buf_list;
+    next_pop         = buf_list;
+    current_num_data = 0;
+    tmp_num_data     = 0;
+}

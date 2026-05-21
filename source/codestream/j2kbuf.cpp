@@ -85,8 +85,7 @@ uint8_t J2kBuf::count_bit(const uint8_t& perd) {
     assume(false);
 }
 
-uint8_t
-J2kBuf::get_byte() {
+uint8_t J2kBuf::get_byte() {
     if (bit_pos | 0x7F) {
         bit_pos = 0x80;
     }

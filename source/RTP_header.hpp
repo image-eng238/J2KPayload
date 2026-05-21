@@ -84,7 +84,7 @@ namespace J2KPayloadHeader_trait {
     constexpr uint16_t get_body_POS(const uint8_t* const pointer) { return (pointer[4] << 4) | ((pointer[5] & 0xF0) >> 4); }               // Resyns Point Offset: 12 bits
     constexpr uint32_t get_body_PID(const uint8_t* const pointer) { return (pointer[5] & 0x0F << 16) | (pointer[6] << 8) | (pointer[7]); } // Precinct Identifier: 20 bits
 
-    uint32_t get_extended_sequence_number(const uint8_t* const pointer) { return (get_ESEQ(pointer + RTPHeader_trait::length) << 16) | RTPHeader_trait::get_sequence_number(pointer); }
+    constexpr uint32_t get_extended_sequence_number(const uint8_t* const pointer) { return (get_ESEQ(pointer + RTPHeader_trait::length) << 16) | RTPHeader_trait::get_sequence_number(pointer); }
 
 }
 
@@ -190,6 +190,13 @@ public:
         );
         // fprintf(stderr, "discarded packsts: %ld\n", dest_packet);
         return dest_packet;
+    }
+    size_t dest_all_packet() {
+        pre_sequence_number = 0;
+        recv_buf.clear();
+        return recv_buf.dest(
+            [](const uint8_t* const data) -> bool { return static_cast<bool>(data[J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)]); }
+        );
     }
 
 private:
