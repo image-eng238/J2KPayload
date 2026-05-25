@@ -29,6 +29,8 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 
 #include "opt_macro.hpp"
 
+#include "argument.hpp"
+
 #include <vector>
 #include <string_view>
 #include <charconv>
@@ -43,56 +45,77 @@ constexpr size_t MAX_PACKET_SIZE = 1384;
 int read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf);
 
 int main(int argc, char** argv) {
-    std::vector<std::string_view> arg_view(argc - 1);
-    for (int i = 1; i < argc; ++i) {
-        arg_view[i - 1] = argv[i];
-    }
-
-    std::string_view addr;
-    uint16_t port    = 0;
-    size_t out_flame = 100;
+    std::string_view addr = "127.0.0.1";
+    uint16_t port         = 50001;
+    size_t out_flame      = 60;
     cpu_set_t affinity;
     CPU_ZERO(&affinity);
+    cpu_set_t affinity_analysis;
+    CPU_ZERO(&affinity_analysis);
 
-    for (auto it = arg_view.begin(); it != arg_view.end(); ++it) {
-
-        if (*it == "-a") {
-            it++;
-            addr = it->data();
-        }
-        if (*it == "-p") {
-            it++;
-            if (std::from_chars(it->begin(), it->end(), port).ptr != it->end()) {
-                port = 0;
-            }
-        }
-        if (*it == "-f") {
-            it++;
-            if (std::from_chars(it->begin(), it->end(), out_flame).ptr != it->end()) {
-                out_flame = 100;
-            }
-        }
-        if (*it == "-c") {
-            it++;
-            size_t cpu_bit_mask = 0;
-            if (std::from_chars(it->begin(), it->end(), cpu_bit_mask, 16).ptr == it->end()) {
-                size_t i = 0;
-                while (cpu_bit_mask != 0) {
-                    if (cpu_bit_mask & 0x1)
-                        CPU_SET(i, &affinity);
-                    cpu_bit_mask >>= 1;
-                    ++i;
-                }
+    {
+        using namespace tklib;
+        static constexpr argument_list args_list(
+            {{'a', "address", "IPv4 address default: 127.0.0.1"},
+             {'p', "port", "Port default: 50001"},
+             {'f', "frame", "The interval between frames to display default: 60"},
+             {'c', "receive_affinity", "CPU affinity of the receive thread"},
+             {'C', "analysis_affinity", "CPU affinity of the analysis thread"},
+             {'h', "help", "Show this"}}
+        );
+        static_assert(args_list.check());
+        argument_t args(argc, argv, args_list);
+        while (!args.empty()) {
+            switch (auto o = args.get_opt()) {
+                case args_list('a'):
+                    addr = args.pop();
+                    break;
+                case args_list('p'): {
+                    auto tmp = args.pop();
+                    std::from_chars(tmp.begin(), tmp.end(), port);
+                } break;
+                case args_list('f'): {
+                    auto tmp = args.pop();
+                    std::from_chars(tmp.begin(), tmp.end(), out_flame);
+                } break;
+                case args_list('c'): {
+                    size_t cpu_bit_mask = 0;
+                    auto tmp            = args.pop();
+                    if (std::from_chars(tmp.begin(), tmp.end(), cpu_bit_mask, 16).ptr == tmp.end()) {
+                        size_t i = 0;
+                        while (cpu_bit_mask != 0) {
+                            if (cpu_bit_mask & 0x1)
+                                CPU_SET(i, &affinity);
+                            cpu_bit_mask >>= 1;
+                            ++i;
+                        }
+                    }
+                } break;
+                case args_list('C'): {
+                    size_t cpu_bit_mask = 0;
+                    auto tmp            = args.pop();
+                    if (std::from_chars(tmp.begin(), tmp.end(), cpu_bit_mask, 16).ptr == tmp.end()) {
+                        size_t i = 0;
+                        while (cpu_bit_mask != 0) {
+                            if (cpu_bit_mask & 0x1)
+                                CPU_SET(i, &affinity_analysis);
+                            cpu_bit_mask >>= 1;
+                            ++i;
+                        }
+                    }
+                } break;
+                case args_list('h'):
+                    args_list.print_arg();
+                    exit(0);
+                default:
+                    fprintf(stderr, "unknown argument: %s\n", args.show().data());
+                    exit(1);
             }
         }
     }
 
     RTPReceiver rtp_recv;
-    if (addr.empty() && port == 0) {
-        rtp_recv.sock_bind();
-    } else {
-        rtp_recv.sock_bind(addr.data(), port);
-    }
+    rtp_recv.sock_bind(addr.data(), port);
 
     std::chrono::steady_clock::time_point analysis_start;
     std::chrono::steady_clock::time_point analysis_finish;
@@ -201,11 +224,12 @@ int main(int argc, char** argv) {
             exit(1);
         }
     }
-    // test code
-    cpu_set_t test;
-    CPU_ZERO(&test);
-    CPU_SET(2, &test);
-    pthread_setaffinity_np(consumer.native_handle(), sizeof(test), &test);
+    if (CPU_COUNT(&affinity_analysis) != 0) {
+        if (auto result = pthread_setaffinity_np(consumer.native_handle(), sizeof(affinity_analysis), &affinity_analysis); result != 0) {
+            fprintf(stderr, "pthread_setaffinity_up() error: %d\n", result);
+            exit(1);
+        }
+    }
 
     consumer.join();
     produser.join();
