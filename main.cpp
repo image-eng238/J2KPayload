@@ -136,14 +136,22 @@ int main(int argc, char** argv) {
         if (unlikely(is_enter)) {
             while (!analysis_stoper);
         }
+
+#ifndef DISABLE_TABLE
         MainHeader main_header;
         Tile j2k_tile;
-        // std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
         std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
+#endif
 
         analysis_start = std::chrono::steady_clock::now();
+
         printf("analysis thread ready...\n");
         while (true) {
+#ifdef DISABLE_TABLE
+            MainHeader main_header;
+            Tile j2k_tile;
+            std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
+#endif
             try {
                 if (unlikely(!rtp_recv.receive())) break;
                 auto& j2kpayload    = rtp_recv.access_payload();

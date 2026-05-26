@@ -10,8 +10,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # add_definitions(-DGENERATE_LOG)
 # add_definitions(-DGENERATE_RECEIVE_PROBABILITY)
+# add_definitions(-DDISABLE_TABLE)
 
 add_definitions(-DENABLE_EXPECT)
+
 
 # build flags
 
