@@ -52,6 +52,7 @@ int main(int argc, char** argv) {
     CPU_ZERO(&affinity);
     cpu_set_t affinity_analysis;
     CPU_ZERO(&affinity_analysis);
+    bool is_enter = false;
 
     {
         using namespace tklib;
@@ -61,6 +62,7 @@ int main(int argc, char** argv) {
              {'f', "frame", "The interval between frames to display default: 60"},
              {'c', "receive_affinity", "CPU affinity of the receive thread"},
              {'C', "analysis_affinity", "CPU affinity of the analysis thread"},
+             {0, "Enter", "analysis thread continue at enter"},
              {'h', "help", "Show this"}}
         );
         static_assert(args_list.check());
@@ -104,6 +106,9 @@ int main(int argc, char** argv) {
                         }
                     }
                 } break;
+                case args_list("Enter"):
+                    is_enter = true;
+                    break;
                 case args_list('h'):
                     args_list.print_arg();
                     exit(0);
@@ -126,6 +131,10 @@ int main(int argc, char** argv) {
     size_t loss_frame     = 0;
 
     std::thread consumer([&] {
+        if (unlikely(is_enter)) {
+            printf("Press Enter to continue");
+            getc(stdin);
+        }
         MainHeader main_header;
         Tile j2k_tile;
         // std::array<Precinct*, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
