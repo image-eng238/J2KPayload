@@ -130,10 +130,11 @@ int main(int argc, char** argv) {
     size_t analysis_frame = 0;
     size_t loss_frame     = 0;
 
+    std::atomic_bool analysis_stoper = false;
+
     std::thread consumer([&] {
         if (unlikely(is_enter)) {
-            printf("Press Enter to continue");
-            getc(stdin);
+            while (!analysis_stoper);
         }
         MainHeader main_header;
         Tile j2k_tile;
@@ -238,6 +239,12 @@ int main(int argc, char** argv) {
             fprintf(stderr, "pthread_setaffinity_up() error: %d\n", result);
             exit(1);
         }
+    }
+
+    if (unlikely(is_enter)) {
+        printf("Press Enter to continue\n");
+        getc(stdin);
+        analysis_stoper = true;
     }
 
     consumer.join();
