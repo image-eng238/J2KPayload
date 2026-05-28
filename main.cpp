@@ -174,7 +174,7 @@ int main(int argc, char** argv) {
                     if (out_flame != 0 && analysis_frame % out_flame == 0) {
                         auto now     = std::chrono::steady_clock::now();
                         auto avg     = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-                        auto avg_fps = 1 / (static_cast<float>(avg.count()) / out_flame);
+                        auto avg_fps = 1000 / (static_cast<float>(avg.count()) / out_flame);
                         printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
                         avg_frame = now;
                     }
