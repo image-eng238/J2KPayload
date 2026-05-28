@@ -130,6 +130,9 @@ int main(int argc, char** argv) {
     size_t analysis_frame = 0;
     size_t loss_frame     = 0;
 
+    size_t RTP_error_count = 0;
+    size_t J2K_error_count = 0;
+
     std::atomic_bool analysis_stoper = false;
 
     std::thread consumer([&] {
@@ -196,6 +199,7 @@ int main(int argc, char** argv) {
                 // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld, frame: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet, analysis_frame);
                 fprintf(stderr, "RTP error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld, data in buf: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet, rtp_recv.access_recv_buf().get_num_data());
                 ++loss_frame;
+                ++RTP_error_count;
             } catch (J2K_packet_error& e) {
                 auto dest_packet = rtp_recv.dest_all_packet();
                 switch (e.type) {
@@ -209,6 +213,7 @@ int main(int argc, char** argv) {
                         fprintf(stderr, "unknown error analysis_frame: %ld, discarded packsts: %ld, data in buf: %ld\n", analysis_frame, dest_packet, rtp_recv.access_recv_buf().get_num_data());
                 }
                 ++loss_frame;
+                ++J2K_error_count;
             }
 
             // std::this_thread::yield();
@@ -265,6 +270,8 @@ int main(int argc, char** argv) {
     printf("finish diff: %ld\n", diff);
     printf("analysis frame: %ld\n", analysis_frame);
     printf("lost frame: %ld\n", loss_frame);
+    printf("RTP packet error: %ld\n", RTP_error_count);
+    printf("J2K packet error: %ld\n", J2K_error_count);
 #ifdef GENERATE_RECEIVE_PROBABILITY
     printf("receive: %ld\n", leaky_bucket_buf::count_receive);
     printf("again:   %ld\n", leaky_bucket_buf::count_agaein);
