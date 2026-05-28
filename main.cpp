@@ -174,7 +174,7 @@ int main(int argc, char** argv) {
                     if (out_flame != 0 && analysis_frame % out_flame == 0) {
                         auto now     = std::chrono::steady_clock::now();
                         auto avg     = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-                        auto avg_fps = 1000 / (static_cast<float>(avg.count()) / out_flame);
+                        auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
                         printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
                         avg_frame = now;
                     }
@@ -194,7 +194,7 @@ int main(int argc, char** argv) {
                 // 将来的には timestanp で制御
                 auto dest_packet = rtp_recv.dest_packet();
                 // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld, frame: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet, analysis_frame);
-                fprintf(stderr, "RTP error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld, data in buf\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet, rtp_recv.access_recv_buf().get_num_data());
+                fprintf(stderr, "RTP error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld, data in buf: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet, rtp_recv.access_recv_buf().get_num_data());
                 ++loss_frame;
             } catch (J2K_packet_error& e) {
                 auto dest_packet = rtp_recv.dest_all_packet();
