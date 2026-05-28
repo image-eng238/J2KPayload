@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
 
     {
         using namespace tklib;
-        static constexpr argument_list args_list(
+        static constexpr argument_list<7UL, -1, -2> args_list(
             {{'a', "address", "IPv4 address default: 127.0.0.1"},
              {'p', "port", "Port default: 50001"},
              {'f', "frame", "The interval between frames to display default: 60"},
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
              {'h', "help", "Show this"}}
         );
         static_assert(args_list.check());
-        argument_t args(argc, argv, args_list);
+        argument_t<7UL, -1, -2> args(argc, argv, args_list);
         while (!args.empty()) {
             switch (auto o = args.get_opt()) {
                 case args_list('a'):
