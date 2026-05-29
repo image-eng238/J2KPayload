@@ -121,12 +121,12 @@ int main(int argc, char** argv) {
                 send_pktsize = rtp.get_packet(send_buffer, diff_seq * current_file_loop);
             }
         }
-        sended_packet++;
+
         if (num_input != 0) {
             if (--num_input == 0) is_enter = true;
         }
-        now_frame++;
         if (is_enter) {
+            if (sended_packet > 1) std::cout << sended_packet << std::endl;
             int c = 0;
             while ((c = getchar()) != '\n') {
                 input.push_back(c);
@@ -136,11 +136,14 @@ int main(int argc, char** argv) {
                 is_enter = false;
                 input.clear();
             }
-            std::cout << "send main packet, number of sent packets: " << sended_packet << std::endl;
+            std::cout << "send main packet, number of sent packets: " << sended_packet << " -> ";
+            if (num_input == 0 && is_enter == false) std::cout << std::endl;
             udp.send(send_buffer, send_pktsize);
         } else {
             udp.send(send_buffer, send_pktsize);
         }
+        sended_packet++;
+        now_frame++;
 
         uint32_t sequence_number = (J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_ESEQ() << 16) | RTPHeader(send_buffer).get_sequence_number();
         if (!((sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (sequence_number == 0))) {
@@ -153,11 +156,11 @@ int main(int argc, char** argv) {
         assert(J2KPayloadHeader(RTPHeader(send_buffer).get_header_length() + send_buffer).get_MH());
         while (true) { // body packet
             send_pktsize = rtp.get_packet(send_buffer, diff_seq * current_file_loop);
-            sended_packet++;
             if (num_input != 0) {
                 if (--num_input == 0) is_enter = true;
             }
             if (is_enter) {
+                std::cout << sended_packet << std::endl;
                 int c = 0;
                 while ((c = getchar()) != '\n') {
                     input.push_back(c);
@@ -167,11 +170,13 @@ int main(int argc, char** argv) {
                     is_enter = false;
                     input.clear();
                 }
-                std::cout << "send body packet, number of set packets: " << sended_packet << std::endl;
+                std::cout << "send body packet, number of set packets: " << sended_packet << " -> ";
+                if (num_input == 0 && is_enter == false) std::cout << std::endl;
                 udp.send(send_buffer, send_pktsize);
             } else {
                 udp.send(send_buffer, send_pktsize);
             }
+            sended_packet++;
             // std::this_thread::sleep_for(std::chrono::milliseconds(interval));
             std::this_thread::sleep_for(std::chrono::microseconds(interval));
 
