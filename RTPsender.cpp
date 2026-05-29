@@ -102,6 +102,9 @@ int main(int argc, char** argv) {
 
     size_t sended_packet = 0;
 
+    std::string input;
+    size_t num_input = 0;
+
     auto next = std::chrono::system_clock::now(); // 1 ループに 16ms 以上で行うことで 60fps を再現
     while (true) {
         next += std::chrono::milliseconds(allowable_time);
@@ -119,9 +122,20 @@ int main(int argc, char** argv) {
             }
         }
         sended_packet++;
+        if (num_input != 0) {
+            if (--num_input == 0) is_enter = true;
+        }
         now_frame++;
         if (is_enter) {
-            getc(stdin);
+            int c = 0;
+            while ((c = getchar()) != '\n') {
+                input.push_back(c);
+            }
+            if (!input.empty()) {
+                std::from_chars(input.begin().base(), input.end().base(), num_input);
+                is_enter = false;
+                input.clear();
+            }
             std::cout << "send main packet, number of sent packets: " << sended_packet << std::endl;
             udp.send(send_buffer, send_pktsize);
         } else {
@@ -140,8 +154,19 @@ int main(int argc, char** argv) {
         while (true) { // body packet
             send_pktsize = rtp.get_packet(send_buffer, diff_seq * current_file_loop);
             sended_packet++;
+            if (num_input != 0) {
+                if (--num_input == 0) is_enter = true;
+            }
             if (is_enter) {
-                getc(stdin);
+                int c = 0;
+                while ((c = getchar()) != '\n') {
+                    input.push_back(c);
+                }
+                if (!input.empty()) {
+                    std::from_chars(input.begin().base(), input.end().base(), num_input);
+                    is_enter = false;
+                    input.clear();
+                }
                 std::cout << "send body packet, number of set packets: " << sended_packet << std::endl;
                 udp.send(send_buffer, send_pktsize);
             } else {
