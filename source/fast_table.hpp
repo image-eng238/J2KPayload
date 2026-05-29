@@ -11,10 +11,12 @@ struct fast_table {
     uint8_t deb_resolution_level;
     uint8_t deb_band_pos[3];
     CodeBlock ps_codeblock[3];
+    uint32_t PID;
 
-    void set(const Precinct* const p) {
+    void set(const Precinct* const p, const uint32_t pid) {
         number_of_subband    = p->get_number_of_subband();
         deb_resolution_level = p->get_resolution_level();
+        PID                  = pid;
         for (uint8_t i = 0; i < number_of_subband; ++i) {
             deb_band_pos[i] = p->get_psubband_ptr(i)->get_band_pos();
             ps_codeblock[i].copy_pos(*p->get_psubband_ptr(i)->get_codeblock_ptr(0));
