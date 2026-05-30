@@ -7,7 +7,7 @@
 #include <utility>
 
 namespace tklib {
-    template <size_t N, int UnknownCode = -1, int NoArugmentCode = -2>
+    template <size_t N = 0, int UnknownCode = -1, int NoArugmentCode = -2>
     class argument_list {
     private:
         struct arg_ele {
