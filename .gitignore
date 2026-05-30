@@ -1,8 +1,6 @@
 .vscode/
-build/
+build*/
 data/
 log/
 
-perf.data
-perf.data.old
-perf.data.keep
+perf.*
