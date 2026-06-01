@@ -137,7 +137,7 @@ class RTPReceiver {
 
 public:
     RTPReceiver(leaky_bucket_buf* const ptr)
-        : buffer{ptr}, pre_sequence_number{}, cache{}, packets{}, pos{}, num_packets{1} {}
+        : buffer{ptr}, pre_sequence_number{}, PID{}, cache{}, packets{}, pos{}, num_packets{1} {}
     enum {
         FAILURE     = 0,
         SUCCESS     = 1,
@@ -199,14 +199,14 @@ public:
             ptr             = pkt.data + hl;
             if (pos != num_packets) {
                 // assert(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()));
-                len = pkt.len - hl;
+                len = static_cast<size_t>(pkt.len - hl);
             } else {
                 assert(J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()));
                 len = J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
             }
         } else {
             ptr   = cache.data + hl + J2KPayloadHeader_trait::get_body_POS(cache.data + RTPHeader_trait::get_header_length());
-            len   = cache.len - hl - J2KPayloadHeader_trait::get_body_POS(cache.data + RTPHeader_trait::get_header_length());
+            len   = static_cast<size_t>(cache.len - hl - J2KPayloadHeader_trait::get_body_POS(cache.data + RTPHeader_trait::get_header_length()));
             cache = {};
         }
     }

@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
         static_assert(args_list.check());
         argument_t args(argc, argv, args_list);
         while (!args.empty()) {
-            switch (auto o = args.get_opt()) {
+            switch (args.get_opt()) {
                 case args_list('a'):
                     addr = args.pop();
                     break;
@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
 #ifndef DISABLE_TABLE
         MainHeader main_header;
         Tile j2k_tile;
-        std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
+        std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table{};
         avg_frame = std::chrono::steady_clock::now();
         {
             // uint8_t* data;

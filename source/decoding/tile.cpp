@@ -219,7 +219,7 @@ void Tile::read(const MainHeader& mhd, std::array<fast_table, ConstValue::num_pr
     std::vector<std::vector<uint32_t>> x_count(number_of_component, std::vector<uint32_t>(N_L + 1));
     std::vector<std::vector<uint32_t>> y_count(number_of_component, std::vector<uint32_t>(N_L + 1));
 
-    std::array<uint32_t, ConstValue::num_component> c_precinct_index;
+    std::array<uint32_t, ConstValue::num_component> c_precinct_index{};
 
     uint32_t max_res_precinct_count = 0;
     uint8_t max_N_L_count           = 0;

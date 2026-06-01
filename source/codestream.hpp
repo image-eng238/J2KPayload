@@ -80,12 +80,12 @@ public:
     //     inline static size_t count_true  = 0;
     //     inline static size_t count_false = 0;
 
-    J2kBuf() : buf_ptr{nullptr}, bit_pos{128}, bit_purge{}, byte_pos{0}, buf_length{0}, recv{} {};
-    J2kBuf(uint8_t* in) : buf_ptr{in}, bit_pos{128}, bit_purge{}, byte_pos{0}, buf_length{0}, recv{} {};
-    J2kBuf(uint8_t* in, const size_t& length) : buf_ptr{in}, bit_pos{128}, bit_purge{}, byte_pos{0}, buf_length{length}, recv{} {};
+    J2kBuf() : bit_pos{128}, bit_purge{}, recv{}, byte_pos{0}, buf_length{0}, buf_ptr{nullptr} {};
+    J2kBuf(uint8_t* in) : bit_pos{128}, bit_purge{}, recv{}, byte_pos{0}, buf_length{0}, buf_ptr{in} {};
+    J2kBuf(uint8_t* in, const size_t& length) : bit_pos{128}, bit_purge{}, recv{}, byte_pos{0}, buf_length{length}, buf_ptr{in} {};
     J2kBuf(uint8_t* in, const size_t& length, RTPReceiver* const& rptr)
-        : buf_ptr{in}, bit_pos{128}, bit_purge{}, byte_pos{0}, buf_length{length}, recv{rptr} {};
-    J2kBuf(RTPReceiver* const rptr) : buf_ptr{nullptr}, bit_pos{128}, bit_purge{}, byte_pos{0}, buf_length{0}, recv{rptr} {};
+        : bit_pos{128}, bit_purge{}, recv{rptr}, byte_pos{0}, buf_length{length}, buf_ptr{in} {};
+    J2kBuf(RTPReceiver* const rptr) : bit_pos{128}, bit_purge{}, recv{rptr}, byte_pos{0}, buf_length{0}, buf_ptr{nullptr} {};
 
     void step(const int64_t& = 1);
     void r_fill();
