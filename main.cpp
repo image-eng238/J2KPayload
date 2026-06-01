@@ -119,8 +119,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    RTPReceiver rtp_recv;
-    rtp_recv.sock_bind(addr.data(), port);
+    UDPReceiver udp(addr.data(), port);
+    leaky_bucket_buf buffer(&udp);
+    RTPReceiver rtp_recv(&buffer);
 
     std::chrono::steady_clock::time_point analysis_start;
     std::chrono::steady_clock::time_point analysis_finish;
@@ -139,41 +140,46 @@ int main(int argc, char** argv) {
         if (unlikely(is_enter)) {
             while (!analysis_stoper);
         }
+        printf("analysis thread ready...\n");
+        analysis_start = std::chrono::steady_clock::now();
 
 #ifndef DISABLE_TABLE
         MainHeader main_header;
         Tile j2k_tile;
         std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
+        avg_frame = std::chrono::steady_clock::now();
+        {
+            uint8_t* data;
+            int len;
+            while (true) {
+                len = buffer.pop(data);
+                if (J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::get_header_length()))
+                    break;
+            }
+            J2kBuf buf(data, len);
+            main_header.read(buf);
+            j2k_tile.init(main_header, buf);
+            j2k_tile.read(main_header, j2k_packet_table);
+            printf("main header read, seq: %d\n", 0);
+        }
 #endif
 
-        analysis_start = std::chrono::steady_clock::now();
-
-        printf("analysis thread ready...\n");
         while (true) {
 #ifdef DISABLE_TABLE
-            MainHeader main_header;
-            Tile j2k_tile;
-            std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
 #endif
+            size_t table_index = 0;
+            uint32_t PID       = 0;
             try {
-                if (unlikely(!rtp_recv.receive())) break;
-                auto& j2kpayload    = rtp_recv.access_payload();
-                auto& pkt_data      = rtp_recv.access_pkt_data_ptr();
-                auto& pkt_data_size = rtp_recv.access_pkt_data_size();
-
-                // decoder
-                if (likely(!static_cast<bool>(j2kpayload.get_MH()))) { // body packet
-
-                    J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
-                    size_t loop_count = 0;
-                    for (auto& p : j2k_packet_table) {
-                        // read_packet(p, buf);
-                        p.read_packet(buf);
-                        ++loop_count;
-                    }
-
-                    // フレーム終了
+                const auto recv_result = rtp_recv.check();
+                if (recv_result == RTPReceiver::SUCCESS) { // 正常受信
+                    PID = rtp_recv.get_PID();
+                    J2kBuf buf(&rtp_recv);
+                    do {
+                        j2k_packet_table[table_index].read_packet(buf);
+                    } while (j2k_packet_table[table_index++].PID == PID);
+                } else if (recv_result == RTPReceiver::MAIN_HEADER) { // フレーム終了
                     ++analysis_frame;
+                    table_index = 0;
                     if (out_flame != 0 && analysis_frame % out_flame == 0) {
                         auto now     = std::chrono::steady_clock::now();
                         auto avg     = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
@@ -181,61 +187,53 @@ int main(int argc, char** argv) {
                         printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
                         avg_frame = now;
                     }
+                } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス 破棄する PID が recv_result にある
+                    PID = rtp_recv.get_PID();
+                    while (j2k_packet_table[table_index++].PID == PID);
                 } else {
-                    // フレーム開始
-                    if (unlikely(main_header.empty())) {
-                        avg_frame = std::chrono::steady_clock::now();
-                        J2kBuf buf(pkt_data, pkt_data_size, &rtp_recv);
-                        main_header.read(buf);
-                        j2k_tile.init(main_header, buf);
-                        j2k_tile.read(main_header, j2k_packet_table);
-                        printf("main header read, seq: %d\n", rtp_recv.get_extended_sequence_number());
-                    }
+                    break;
                 }
-            } catch (rtp_sequence_error& e) {
-                // メインパケットの出現までパケットを破棄
-                // 将来的には timestanp で制御
-                auto dest_packet = rtp_recv.dest_packet();
-                // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld, frame: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet, analysis_frame);
-                fprintf(stderr, "RTP error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld, data in buf: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet, rtp_recv.access_recv_buf().get_num_data());
-                ++loss_frame;
-                ++RTP_error_count;
-            } catch (J2K_packet_error& e) {
-                auto dest_packet = rtp_recv.dest_all_packet();
+
+            }
+            // } catch (rtp_sequence_error& e) {
+            //     // メインパケットの出現までパケットを破棄
+            //     // 将来的には timestanp で制御
+            //     auto dest_packet = rtp_recv.dest_packet();
+            //     // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld, frame: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet, analysis_frame);
+            //     fprintf(stderr, "RTP error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld, data in buf: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet, rtp_recv.access_recv_buf().get_num_data());
+            //     ++loss_frame;
+            //     ++RTP_error_count;
+            catch (J2K_packet_error& e) {
+                buffer.clear();
+                auto dest_packet = buffer.dest(
+                    [](const uint8_t* const data) -> bool { return static_cast<bool>(J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)); }
+                );
                 switch (e.type) {
                     case J2K_packet_error::empty_packet:
-                        fprintf(stderr, "j2k packet error analysis_frame: %ld, discarded packsts: %ld, data in buf: %ld\n", analysis_frame, dest_packet, rtp_recv.access_recv_buf().get_num_data());
+                        fprintf(stderr, "j2k packet error analysis_frame: %ld, discarded packsts: %ld\n", analysis_frame, dest_packet);
                         break;
                     case J2K_packet_error::segment_byte:
-                        fprintf(stderr, "segment error analysis_frame: %ld, discarded packsts: %ld, data in buf: %ld\n", analysis_frame, dest_packet, rtp_recv.access_recv_buf().get_num_data());
+                        fprintf(stderr, "segment error analysis_frame: %ld, discarded packsts: %ld\n", analysis_frame, dest_packet);
                         break;
                     default:
-                        fprintf(stderr, "unknown error analysis_frame: %ld, discarded packsts: %ld, data in buf: %ld\n", analysis_frame, dest_packet, rtp_recv.access_recv_buf().get_num_data());
+                        fprintf(stderr, "unknown error analysis_frame: %ld, discarded packsts: %ld\n", analysis_frame, dest_packet);
                 }
                 ++loss_frame;
                 ++J2K_error_count;
             }
-
-            // std::this_thread::yield();
         }
         analysis_finish = std::chrono::steady_clock::now();
         printf("analysis finish: %ld\n", (analysis_finish - analysis_start).count());
     });
-    // std::thread consumer([&] {
-    //     while (rtp_recv.receive()) {
-    //         std::this_thread::yield();
-    //     }
-    // });
 
-    auto& r = rtp_recv.access_recv_buf();
-    std::thread produser([&r, &receive_start, &receive_finish]() {
+    std::thread produser([&buffer, &receive_start, &receive_finish]() {
         receive_start = std::chrono::steady_clock::now();
         printf("receive thread ready...\n");
         // while (true) {
         //     if (!r.receive()) break;
         //     // std::this_thread::sleep_for(std::chrono::microseconds(10));
         // }
-        while (r.receive()) {
+        while (buffer.receive()) {
             // std::this_thread::yield();
         }
         receive_finish = std::chrono::steady_clock::now();

@@ -6,7 +6,7 @@
 
 void J2kBuf::step(const int64_t& in) {
     advance_byte_pos(in);
-    if (!static_cast<bool>(recv->access_payload().get_MH())) termination_check();
+    termination_check();
 }
 void J2kBuf::r_fill() {
     if (BRANCH_PROB(!(bit_pos & 0x80), 0.265)) {
@@ -152,10 +152,7 @@ void J2kBuf::termination_check(const size_t& n) {
 }
 void J2kBuf::receive() {
     assert(recv != nullptr);
-    if (recv->receive()) {
-        byte_pos   = 0;
-        bit_pos    = 0x80;
-        buf_ptr    = recv->access_pkt_data_ptr();
-        buf_length = recv->access_pkt_data_size();
-    }
+    byte_pos = 0;
+    bit_pos  = 0x80;
+    recv->pop(buf_ptr, buf_length);
 }
