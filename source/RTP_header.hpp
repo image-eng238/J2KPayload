@@ -222,7 +222,7 @@ class RTPReceiver {
 
 public:
     RTPReceiver(leaky_bucket_buf* const ptr)
-        : buffer{ptr}, pre_sequence_number{}, packets{}, pos{}, num_packets{1} {}
+        : buffer{ptr}, pre_sequence_number{}, cache{}, packets{}, pos{}, num_packets{1} {}
     enum {
         FAILURE     = 0,
         SUCCESS     = 1,
@@ -235,12 +235,11 @@ public:
         using namespace J2KPayloadHeader_trait;
         const auto hl = RTPHeader_trait::get_header_length();
 
-        pos        = 0;
-        packets[0] = packets[num_packets - 1];
-        assert(get_body_ORDB(packets[0].data + hl) && num_packets != 1);
+        cache = packets[num_packets - 1];
 
-        num_packets  = 1;
-        uint8_t rpos = 1;
+        pos          = 0;
+        num_packets  = 0;
+        uint8_t rpos = 0;
 
         while (true) {
             auto& data = packets[rpos].data;
@@ -253,11 +252,9 @@ public:
             const auto pre_sequence = pre_sequence_number;
             pre_sequence_number     = sequence;
 
-            if (sequence == pre_sequence + 1) {
+            if (sequence == pre_sequence + 1 || pre_sequence == 0 || sequence == 0) {
                 if (get_MH(data + hl)) {
-                    assert(rpos == 2);
-                    --rpos;
-                    --num_packets;
+                    assert(num_packets == 1);
                     return this->MAIN_HEADER;
                 }
                 // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
@@ -280,17 +277,23 @@ public:
     }
 
     void pop(uint8_t*& ptr, size_t& len) {
-        const auto& pkt = packets[pos++];
-        const auto hl   = RTPHeader_trait::get_header_length() + J2KPayloadHeader_trait::get_header_length();
-        if (pos == 1) {
-            ptr = pkt.data + hl;
-            len = J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
-        } else if (pos != num_packets) {
-            ptr = pkt.data + hl;
-            len = pkt.len - hl;
+        const auto hl = RTPHeader_trait::get_header_length() + J2KPayloadHeader_trait::get_header_length();
+
+        if (cache.empty()) {
+            const auto& pkt = packets[pos++];
+            if (pos != num_packets) {
+                assert(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data));
+                ptr = pkt.data + hl;
+                len = pkt.len - hl;
+            } else {
+                assert(J2KPayloadHeader_trait::get_body_ORDB(pkt.data));
+                ptr = pkt.data + hl;
+                len = J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
+            }
         } else {
-            ptr = pkt.data + hl + J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
-            len = pkt.len - hl - J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
+            ptr   = cache.data + hl + J2KPayloadHeader_trait::get_body_POS(cache.data + RTPHeader_trait::get_header_length());
+            len   = cache.len - hl - J2KPayloadHeader_trait::get_body_POS(cache.data + RTPHeader_trait::get_header_length());
+            cache = {};
         }
     }
 
@@ -304,7 +307,9 @@ private:
     struct packet {
         uint8_t* data;
         int len;
+        bool empty() const { return data == nullptr && len == 0; }
     };
+    packet cache;
     std::array<packet, 16> packets;
     uint8_t pos;
     uint8_t num_packets;

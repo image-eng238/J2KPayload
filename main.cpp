@@ -156,7 +156,11 @@ int main(int argc, char** argv) {
                 if (J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::get_header_length()))
                     break;
             }
-            J2kBuf buf(data, len);
+            const auto hl = RTPHeader_trait::get_header_length() + J2KPayloadHeader_trait::get_header_length();
+            J2kBuf buf(data + hl, len - hl + 1);
+
+            // while (rtp_recv.check() != RTPReceiver::MAIN_HEADER);
+            // J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
             j2k_tile.read(main_header, j2k_packet_table);
