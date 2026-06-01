@@ -136,6 +136,17 @@ int main(int argc, char** argv) {
 
     std::atomic_bool analysis_stoper = false;
 
+    auto print_frame = [&]() {
+        ++analysis_frame;
+        if (out_flame != 0 && analysis_frame % out_flame == 0) {
+            auto now     = std::chrono::steady_clock::now();
+            auto avg     = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
+            auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
+            printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
+            avg_frame = now;
+        }
+    };
+
     std::thread consumer([&] {
         if (unlikely(is_enter)) {
             while (!analysis_stoper);
@@ -186,26 +197,22 @@ int main(int argc, char** argv) {
                     assert(buf.empty());
                 } else if (recv_result == RTPReceiver::MAIN_HEADER) { // フレーム終了
                     table_index = 0;
-                    ++analysis_frame;
-                    if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                        auto now     = std::chrono::steady_clock::now();
-                        auto avg     = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-                        auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
-                        printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
-                        avg_frame = now;
-                    }
+                    print_frame();
                 } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス 破棄する PID が recv_result にある
-                    PID = rtp_recv.get_PID();
-                    while (j2k_packet_table[table_index++].PID != PID);
-                } else {
-                    ++analysis_frame;
-                    if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                        auto now     = std::chrono::steady_clock::now();
-                        auto avg     = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-                        auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
-                        printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
-                        avg_frame = now;
+                    PID                  = rtp_recv.get_PID();
+                    size_t loss_precinct = 0;
+                    while (true) {
+                        if (j2k_packet_table[table_index].PID == PID) break;
+                        ++loss_precinct;
+                        ++table_index;
+                        if (table_index == j2k_packet_table.size()) {
+                            table_index = 0;
+                            print_frame();
+                        }
                     }
+                    fprintf(stderr, "RTP error analysis_frame: %ld, discarded precinct: %ld\n", analysis_frame, loss_precinct);
+                } else {
+                    print_frame();
                     break;
                 }
 
@@ -215,7 +222,7 @@ int main(int argc, char** argv) {
             //     // 将来的には timestanp で制御
             //     auto dest_packet = rtp_recv.dest_packet();
             //     // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld, frame: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet, analysis_frame);
-            //     fprintf(stderr, "RTP error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld, data in buf: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet, rtp_recv.access_recv_buf().get_num_data());
+            // fprintf(stderr, "RTP error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld, data in buf: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet, rtp_recv.access_recv_buf().get_num_data());
             //     ++loss_frame;
             //     ++RTP_error_count;
             catch (J2K_packet_error& e) {

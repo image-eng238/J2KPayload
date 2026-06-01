@@ -171,6 +171,7 @@ public:
             if (sequence == pre_sequence + 1 || pre_sequence == 0 || sequence == 0) {
                 if (get_MH(data + hl)) {
                     assert(num_packets == 1);
+                    cache = {};
                     return this->MAIN_HEADER;
                 }
                 // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
