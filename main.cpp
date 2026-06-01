@@ -185,8 +185,8 @@ int main(int argc, char** argv) {
                     }
                     assert(buf.empty());
                 } else if (recv_result == RTPReceiver::MAIN_HEADER) { // フレーム終了
-                    ++analysis_frame;
                     table_index = 0;
+                    ++analysis_frame;
                     if (out_flame != 0 && analysis_frame % out_flame == 0) {
                         auto now     = std::chrono::steady_clock::now();
                         auto avg     = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
@@ -198,6 +198,14 @@ int main(int argc, char** argv) {
                     PID = rtp_recv.get_PID();
                     while (j2k_packet_table[table_index++].PID != PID);
                 } else {
+                    ++analysis_frame;
+                    if (out_flame != 0 && analysis_frame % out_flame == 0) {
+                        auto now     = std::chrono::steady_clock::now();
+                        auto avg     = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
+                        auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
+                        printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
+                        avg_frame = now;
+                    }
                     break;
                 }
 

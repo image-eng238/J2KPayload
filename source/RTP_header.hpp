@@ -161,6 +161,7 @@ public:
             auto& len  = packets[rpos].len;
             ++rpos;
             len = buffer->pop(data);
+            if (len == 1 && RTPHeader_trait::get_V(data) != 0b10) return this->FINISH;
             ++num_packets;
 
             const auto sequence     = get_extended_sequence_number(data);
