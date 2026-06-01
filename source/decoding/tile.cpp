@@ -219,6 +219,8 @@ void Tile::read(const MainHeader& mhd, std::array<fast_table, ConstValue::num_pr
     std::vector<std::vector<uint32_t>> x_count(number_of_component, std::vector<uint32_t>(N_L + 1));
     std::vector<std::vector<uint32_t>> y_count(number_of_component, std::vector<uint32_t>(N_L + 1));
 
+    std::array<uint32_t, ConstValue::num_component> c_precinct_index;
+
     uint32_t max_res_precinct_count = 0;
     uint8_t max_N_L_count           = 0;
     for (uint16_t c = 0; c < number_of_component; ++c) {
@@ -336,7 +338,6 @@ void Tile::read(const MainHeader& mhd, std::array<fast_table, ConstValue::num_pr
                     for (uint16_t c = 0; c < number_of_component; ++c) { // Component
                         const uint8_t current_N_L = tile_component[c].get_N_L();
                         const uint8_t local_N_L   = std::min(static_cast<uint8_t>(current_N_L + 1), N_L);
-                        uint32_t sp               = 0;
 
                         for (uint8_t r = 0; r <= local_N_L; ++r) { // Resolution
 
@@ -369,12 +370,11 @@ void Tile::read(const MainHeader& mhd, std::array<fast_table, ConstValue::num_pr
                                 if (true) {
                                     const uint32_t p                     = x_count[c][r] + y_count[c][r] * current_resolution_ptr->get_precinct_count().x;
                                     Precinct* const current_precinct_ptr = current_resolution_ptr->get_precinct_ptr(p);
-                                    ++sp;
                                     for (uint16_t l = 0; l < number_of_layer; ++l) { // Layer 今回は Layer は 1 固定
                                         if (!is_packet_read[l][r][c][p]) {
                                             is_packet_read[l][r][c][p] = true;
                                             // std::cout << "--- y: " << y << ", x: " << x << std::endl;
-                                            uint32_t PID               = c + sp * number_of_component;
+                                            uint32_t PID               = c + (c_precinct_index[c]++) * number_of_component;
                                             table[table_index++].set(current_precinct_ptr, PID);
                                             // assert(table_index <= ConstValue::num_precinct * ConstValue::Csiz);
                                         }

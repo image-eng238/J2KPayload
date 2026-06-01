@@ -133,91 +133,6 @@ private:
     static constexpr uint8_t length = 8;
 };
 
-// class RTPReceiver {
-// public:
-//     RTPReceiver() : udp{}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{}, recv_buf(&udp) {};
-//     RTPReceiver(const char* const address, const uint16_t port)
-//         : udp{address, port}, rtp_header{}, payload_header{}, pre_sequence_number{}, use_buf{}, recv_buf(&udp) {}
-
-//     RTPHeader& access_rtp() { return rtp_header; }
-//     J2KPayloadHeader& access_payload() { return payload_header; }
-//     uint8_t*& access_pkt_data_ptr() { return pkt_data_ptr; }
-//     size_t& access_pkt_data_size() { return pkt_data_size; }
-//     leaky_bucket_buf& access_recv_buf() { return recv_buf; }
-
-//     uint8_t* get_use_buf() const { return use_buf; }
-//     uint32_t get_extended_sequence_number() const { return (payload_header.get_ESEQ() << 16) | rtp_header.get_sequence_number(); }
-//     static uint32_t get_extended_sequence_number(const uint8_t* const data) { return static_cast<uint32_t>(data[15] << 0x10) | static_cast<uint32_t>(data[2] << 0x8) | static_cast<uint32_t>(data[3]); }
-
-//     bool sock_bind() { return udp.sock_bind(); }
-//     bool sock_bind(const char* const address, const uint16_t port) { return udp.sock_bind(address, port); }
-
-//     bool receive() {
-
-//         auto pkt_size = recv_buf.pop(use_buf);
-
-//         if (unlikely(!(use_buf[0] & 0x80))) { return false; }
-
-//         this->rtp_header.set_ptr(use_buf);
-//         this->payload_header.set_ptr(use_buf + rtp_header.get_header_length());
-
-//         uint32_t extended_sequence_number = get_extended_sequence_number();
-
-//         if (likely((extended_sequence_number == pre_sequence_number + 1) || (pre_sequence_number == 0) || (extended_sequence_number == 0))) {
-//             pkt_data_ptr        = use_buf + rtp_header.get_header_length() + payload_header.get_header_length();
-//             pkt_data_size       = pkt_size - (rtp_header.get_header_length() + payload_header.get_header_length());
-//             pre_sequence_number = extended_sequence_number;
-
-//             return true;
-//         } else {
-//             // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, ", pre_sequence_number, extended_sequence_number, extended_sequence_number - (pre_sequence_number + 1));
-//             rtp_sequence_error err;
-//             err.pre_sq          = pre_sequence_number;
-//             err.err_sq          = extended_sequence_number;
-//             pkt_data_ptr        = nullptr;
-//             pkt_data_size       = 0;
-//             pre_sequence_number = extended_sequence_number;
-
-//             // std::this_thread::yield();
-//             throw err;
-//         }
-//     }
-//     size_t dest_packet() {
-//         // auto dest_packet    = recv_buf.dest([](const uint8_t* const data) { return static_cast<bool>(data[RTPHeader::get_header_length()] & 0xC0); });
-//         // pre_sequence_number = 0;
-//         auto dest_packet = recv_buf.dest(
-//             [](const uint8_t* const data) -> bool { return static_cast<bool>(data[RTPHeader::get_header_length()] & 0xC0); },
-//             [this](const uint8_t* const data) -> void { this->pre_sequence_number = RTPReceiver::get_extended_sequence_number(data); }
-//         );
-//         // fprintf(stderr, "discarded packsts: %ld\n", dest_packet);
-//         return dest_packet;
-//     }
-//     size_t dest_all_packet() {
-//         pre_sequence_number = 0;
-//         recv_buf.clear();
-//         return recv_buf.dest(
-//             [](const uint8_t* const data) -> bool { return static_cast<bool>(J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)); }
-//         );
-//     }
-
-// private:
-//     static constexpr size_t NUM_BUFFER      = 2;
-//     static constexpr size_t MAX_PACKET_SIZE = 1384;
-
-//     UDPReceiver udp;
-//     RTPHeader rtp_header;
-//     J2KPayloadHeader payload_header;
-
-//     uint8_t* pkt_data_ptr;
-//     size_t pkt_data_size;
-
-//     uint32_t pre_sequence_number;
-
-//     uint8_t* use_buf;
-//     // BufferPool<uint8_t, MAX_PACKET_SIZE, NUM_BUFFER> recv_buf;
-//     leaky_bucket_buf recv_buf;
-// };
-
 class RTPReceiver {
 
 public:
@@ -279,15 +194,14 @@ public:
     void pop(uint8_t*& ptr, size_t& len) {
         const auto hl = RTPHeader_trait::get_header_length() + J2KPayloadHeader_trait::get_header_length();
 
-        if (cache.empty()) {
+        if (cache.empty() || cache.is_main()) {
             const auto& pkt = packets[pos++];
+            ptr             = pkt.data + hl;
             if (pos != num_packets) {
-                assert(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data));
-                ptr = pkt.data + hl;
+                // assert(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()));
                 len = pkt.len - hl;
             } else {
-                assert(J2KPayloadHeader_trait::get_body_ORDB(pkt.data));
-                ptr = pkt.data + hl;
+                assert(J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()));
                 len = J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
             }
         } else {
@@ -308,6 +222,7 @@ private:
         uint8_t* data;
         int len;
         bool empty() const { return data == nullptr && len == 0; }
+        bool is_main() const { return J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::get_header_length()); }
     };
     packet cache;
     std::array<packet, 16> packets;

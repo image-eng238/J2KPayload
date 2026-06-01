@@ -8,6 +8,8 @@ namespace ConstValue {
         num_DFS = 1,
         num_COM = 1,
 
+        num_tile            = 1,
+        num_component       = 3,
         num_resolution      = 6,
         num_subband         = 10,
         num_precinct        = 1890,

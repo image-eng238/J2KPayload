@@ -149,18 +149,18 @@ int main(int argc, char** argv) {
         std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table;
         avg_frame = std::chrono::steady_clock::now();
         {
-            uint8_t* data;
-            int len;
-            while (true) {
-                len = buffer.pop(data);
-                if (J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::get_header_length()))
-                    break;
-            }
-            const auto hl = RTPHeader_trait::get_header_length() + J2KPayloadHeader_trait::get_header_length();
-            J2kBuf buf(data + hl, len - hl + 1);
+            // uint8_t* data;
+            // int len;
+            // while (true) {
+            //     len = buffer.pop(data);
+            //     if (J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::get_header_length()))
+            //         break;
+            // }
+            // const auto hl = RTPHeader_trait::get_header_length() + J2KPayloadHeader_trait::get_header_length();
+            // J2kBuf buf(data + hl, len - hl + 1);
 
-            // while (rtp_recv.check() != RTPReceiver::MAIN_HEADER);
-            // J2kBuf buf(&rtp_recv);
+            while (rtp_recv.check() != RTPReceiver::MAIN_HEADER);
+            J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
             j2k_tile.read(main_header, j2k_packet_table);
@@ -168,19 +168,22 @@ int main(int argc, char** argv) {
         }
 #endif
 
+        size_t table_index = 0;
+        uint32_t PID       = 0;
         while (true) {
 #ifdef DISABLE_TABLE
 #endif
-            size_t table_index = 0;
-            uint32_t PID       = 0;
             try {
                 const auto recv_result = rtp_recv.check();
                 if (recv_result == RTPReceiver::SUCCESS) { // 正常受信
                     PID = rtp_recv.get_PID();
                     J2kBuf buf(&rtp_recv);
-                    do {
+                    while (true) {
+                        if (j2k_packet_table[table_index].PID == PID) break;
                         j2k_packet_table[table_index].read_packet(buf);
-                    } while (j2k_packet_table[table_index++].PID == PID);
+                        ++table_index;
+                    }
+                    assert(buf.empty());
                 } else if (recv_result == RTPReceiver::MAIN_HEADER) { // フレーム終了
                     ++analysis_frame;
                     table_index = 0;
@@ -193,7 +196,7 @@ int main(int argc, char** argv) {
                     }
                 } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス 破棄する PID が recv_result にある
                     PID = rtp_recv.get_PID();
-                    while (j2k_packet_table[table_index++].PID == PID);
+                    while (j2k_packet_table[table_index++].PID != PID);
                 } else {
                     break;
                 }

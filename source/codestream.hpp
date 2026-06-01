@@ -131,6 +131,8 @@ public:
 
     uint8_t* make_packet_data(const size_t&, uint8_t* const);
 
+    bool empty() const { return buf_length == byte_pos; }
+
 private:
     void termination_check(const size_t&);
     void receive();

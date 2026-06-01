@@ -6,7 +6,7 @@
 
 void J2kBuf::step(const int64_t& in) {
     advance_byte_pos(in);
-    termination_check();
+    // termination_check();
 }
 void J2kBuf::r_fill() {
     if (BRANCH_PROB(!(bit_pos & 0x80), 0.265)) {
@@ -115,24 +115,28 @@ uint8_t* J2kBuf::make_packet_data(const size_t& len, uint8_t* const ptr) {
     static size_t call_count = 0;
     ++call_count;
     r_fill();
-    if (byte_pos + len < buf_length) {
+    if (byte_pos + len <= buf_length) {
         // memcpy(ptr, get_ptr(), len);
         byte_pos += len;
     } else {
-        uint8_t* dest_ptr      = ptr;
+        // uint8_t* dest_ptr      = ptr;
         const uint8_t* src_ptr = get_ptr();
         size_t cpd             = len;
         size_t cplen           = buf_length - byte_pos;
+        // to_headwear(src_ptr,cplen) ポインタとデータ長をハードウェアに送信
         // memcpy(dest_ptr, src_ptr, cplen);
+        cpd -= cplen;
         receive();
 
         for (size_t i = 0; i < 5; ++i) {
-            dest_ptr += cplen;
+            // dest_ptr += cplen;
             src_ptr = get_ptr();
-            cpd -= cplen;
-            cplen = std::min(cpd, buf_length);
+            cplen   = std::min(cpd, buf_length);
+            // to_headwear(src_ptr,cplen) ポインタとデータ長をハードウェアに送信
             // memcpy(dest_ptr, src_ptr, cplen);
-            if (cplen == buf_length) {
+            cpd -= cplen;
+            // if (cplen == buf_length) {
+            if (cpd != 0) {
                 receive();
             } else {
                 break;
