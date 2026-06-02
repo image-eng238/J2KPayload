@@ -11,6 +11,11 @@
 
 #include <atomic>
 
+class buffer_leak : public std::runtime_error {
+public:
+    explicit buffer_leak(const std::string& arg) : std::runtime_error{arg} {}
+};
+
 class leaky_bucket_buf {
 
 public:

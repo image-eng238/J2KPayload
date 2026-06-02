@@ -312,7 +312,7 @@ void CodeBlock::read_packet_header(J2kBuf* const buf, const uint8_t debug_band_p
         uint32_t bits_to_read_test = lblock; // 大きくても 13 まで？
         uint32_t segment_byte_test = buf->get_bit(bits_to_read_test);
         // assert(segment_byte_test > 1);
-        if (unlikely(segment_byte_test <= 1)) throw J2K_packet_error{J2K_packet_error::segment_byte};
+        if (unlikely(segment_byte_test <= 1)) throw buffer_leak("j2k segment byte");
         current_block->length = segment_byte_test;
 
         if (new_pass > 1) {

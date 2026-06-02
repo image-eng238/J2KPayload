@@ -14,11 +14,6 @@
 #include "leaky_bucket_buf.hpp"
 #include "opt_macro.hpp"
 
-struct rtp_sequence_error {
-    uint32_t pre_sq;
-    uint32_t err_sq;
-};
-
 namespace RTPHeader_trait {
     inline constexpr uint8_t length = 12;
     inline constexpr uint8_t get_header_length() { return RTPHeader_trait::length; }
@@ -200,6 +195,7 @@ public:
         const auto hl = RTPHeader_trait::get_header_length() + J2KPayloadHeader_trait::get_header_length();
 
         if (cache.empty() || cache.is_main()) {
+            if (unlikely(!(pos < num_packets))) { throw buffer_leak("out range"); }
             const auto& pkt = packets[pos++];
             ptr             = pkt.data + hl;
             if (pos != num_packets) {
