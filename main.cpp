@@ -184,69 +184,76 @@ int main(int argc, char** argv) {
                 main_header.read(buf);
                 j2k_tile.init(main_header, buf);
                 j2k_tile.read(main_header, j2k_packet_table);
-                printf("main header read, seq: %d\n", 0);
+                printf("main header read, seq: %d\n", rtp_recv.get_last_sequence_number());
             }
+            while (true)
 #endif
-            try {
-                last_sequence          = rtp_recv.get_last_sequence_number();
-                const auto recv_result = rtp_recv.check();
-                if (likely(recv_result == RTPReceiver::SUCCESS)) { // 正常受信
-                    PID = rtp_recv.get_PID();
-                    J2kBuf buf(&rtp_recv);
-                    while (true) {
-                        if (j2k_packet_table[table_index].PID == PID) break;
-                        j2k_packet_table[table_index].read_packet(buf);
-                        ++table_index;
-                    }
-                    assert(buf.empty());
-                    if (unlikely(rtp_recv.EOC())) { // フレーム終了
-                        table_index = 0;
-                        print_frame();
-                    }
-                } else if (recv_result == RTPReceiver::MAIN_HEADER) { // メインパケット出現
-                    ;
-                } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス
-                    PID                  = rtp_recv.get_PID();
-                    auto test            = rtp_recv.get_last_sequence_number();
-                    size_t loss_precinct = 0;
-                    ++RTP_error_count;
-                    while (true) {
-                        if (j2k_packet_table[table_index].PID == PID) break;
-                        ++loss_precinct;
-                        ++table_index;
-                        if (table_index == j2k_packet_table.size()) {
+                try {
+                    last_sequence          = rtp_recv.get_last_sequence_number();
+                    const auto recv_result = rtp_recv.check();
+                    if (likely(recv_result == RTPReceiver::SUCCESS)) { // 正常受信
+                        PID = rtp_recv.get_PID();
+                        J2kBuf buf(&rtp_recv);
+                        while (true) {
+                            if (j2k_packet_table[table_index].PID == PID) break;
+                            j2k_packet_table[table_index].read_packet(buf);
+                            ++table_index;
+                        }
+                        assert(buf.empty());
+                        if (unlikely(rtp_recv.EOC())) { // フレーム終了
                             table_index = 0;
                             print_frame();
                         }
+                    } else if (recv_result == RTPReceiver::MAIN_HEADER) { // メインパケット出現
+                        ;
+                    } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス
+                        PID                  = rtp_recv.get_PID();
+                        auto test            = rtp_recv.get_last_sequence_number();
+                        size_t loss_precinct = 0;
+                        ++RTP_error_count;
+                        while (true) {
+                            if (j2k_packet_table[table_index].PID == PID) break;
+                            ++loss_precinct;
+                            ++table_index;
+                            if (table_index == j2k_packet_table.size()) {
+                                table_index = 0;
+                                print_frame();
+                            }
+                        }
+                        fprintf(
+                            stderr,
+                            "RTP error analysis_frame: %ld, discarded packet: %d discarded precinct: %ld\n",
+                            analysis_frame, rtp_recv.get_last_sequence_number() - last_sequence, loss_precinct
+                        );
+                    } else {
+#ifdef DISABLE_TABLE
+                        goto long_break;
+#endif
+                        break;
                     }
-                    fprintf(
-                        stderr,
-                        "RTP error analysis_frame: %ld, discarded packet: %d discarded precinct: %ld\n",
-                        analysis_frame, rtp_recv.get_last_sequence_number() - last_sequence, loss_precinct
-                    );
-                } else {
-                    break;
-                }
 
-            } catch (J2K_packet_error& e) {
-                buffer.clear();
-                auto dest_packet = buffer.dest(
-                    [](const uint8_t* const data) -> bool { return static_cast<bool>(J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)); }
-                );
-                switch (e.type) {
-                    case J2K_packet_error::empty_packet:
-                        fprintf(stderr, "j2k packet error analysis_frame: %ld, discarded packsts: %ld\n", analysis_frame, dest_packet);
-                        break;
-                    case J2K_packet_error::segment_byte:
-                        fprintf(stderr, "segment error analysis_frame: %ld, discarded packsts: %ld\n", analysis_frame, dest_packet);
-                        break;
-                    default:
-                        fprintf(stderr, "unknown error analysis_frame: %ld, discarded packsts: %ld\n", analysis_frame, dest_packet);
+                } catch (J2K_packet_error& e) {
+                    buffer.clear();
+                    auto dest_packet = buffer.dest(
+                        [](const uint8_t* const data) -> bool { return static_cast<bool>(J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)); }
+                    );
+                    switch (e.type) {
+                        case J2K_packet_error::empty_packet:
+                            fprintf(stderr, "j2k packet error analysis_frame: %ld, discarded packsts: %ld\n", analysis_frame, dest_packet);
+                            break;
+                        case J2K_packet_error::segment_byte:
+                            fprintf(stderr, "segment error analysis_frame: %ld, discarded packsts: %ld\n", analysis_frame, dest_packet);
+                            break;
+                        default:
+                            fprintf(stderr, "unknown error analysis_frame: %ld, discarded packsts: %ld\n", analysis_frame, dest_packet);
+                    }
+                    ++loss_frame;
+                    ++J2K_error_count;
                 }
-                ++loss_frame;
-                ++J2K_error_count;
-            }
         }
+#ifdef DISABLE_TABLE
+    long_break:
+#endif
         analysis_finish = std::chrono::steady_clock::now();
         printf("analysis finish: %ld\n", (analysis_finish - analysis_start).count());
     });
