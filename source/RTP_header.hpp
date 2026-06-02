@@ -137,7 +137,7 @@ class RTPReceiver {
 
 public:
     RTPReceiver(leaky_bucket_buf* const ptr)
-        : buffer{ptr}, pre_sequence_number{}, PID{}, cache{}, packets{}, pos{}, num_packets{1} {}
+        : buffer{ptr}, pre_sequence_number{}, PID{}, cache{}, packets{}, pos{}, num_packets{1}, is_EOC{false} {}
     enum {
         FAILURE     = 0,
         SUCCESS     = 1,
@@ -155,27 +155,30 @@ public:
         pos          = 0;
         num_packets  = 0;
         uint8_t rpos = 0;
+        if (unlikely(is_EOC)) is_EOC = false;
 
         while (true) {
             auto& data = packets[rpos].data;
             auto& len  = packets[rpos].len;
             ++rpos;
             len = buffer->pop(data);
-            if (len == 1 && RTPHeader_trait::get_V(data) != 0b10) return this->FINISH;
+            if (unlikely(len == 1 && RTPHeader_trait::get_V(data) != 0b10)) return this->FINISH;
             ++num_packets;
 
             const auto sequence     = get_extended_sequence_number(data);
             const auto pre_sequence = pre_sequence_number;
             pre_sequence_number     = sequence;
 
-            if (sequence == pre_sequence + 1 || pre_sequence == 0 || sequence == 0) {
-                if (get_MH(data + hl)) {
+            if (likely(sequence == pre_sequence + 1 || pre_sequence == 0 || sequence == 0)) {
+                if (unlikely(get_MH(data + hl))) { // メインヘッダ出現
                     assert(num_packets == 1);
                     cache = {};
                     return this->MAIN_HEADER;
                 }
-                // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
-                if (get_body_ORDB(data + hl)) {
+
+                if (unlikely(get_M(data))) { is_EOC = true; } // コードストリーム終端
+
+                if (get_body_ORDB(data + hl)) { // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
                     PID = get_body_PID(data + hl);
                     return this->SUCCESS;
                 }
@@ -200,7 +203,7 @@ public:
             const auto& pkt = packets[pos++];
             ptr             = pkt.data + hl;
             if (pos != num_packets) {
-                // assert(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()));
+                assert(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()));
                 len = static_cast<size_t>(pkt.len - hl);
             } else {
                 assert(J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()));
@@ -213,7 +216,9 @@ public:
         }
     }
 
+    uint32_t get_last_sequence_number() const { return pre_sequence_number; }
     uint32_t get_PID() const { return PID; }
+    bool EOC() const { return is_EOC; }
 
 private:
     leaky_bucket_buf* buffer;
@@ -230,4 +235,5 @@ private:
     std::array<packet, 16> packets;
     uint8_t pos;
     uint8_t num_packets;
+    bool is_EOC;
 };

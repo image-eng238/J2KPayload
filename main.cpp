@@ -160,33 +160,37 @@ int main(int argc, char** argv) {
         std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table{};
         avg_frame = std::chrono::steady_clock::now();
         {
-            // uint8_t* data;
-            // int len;
-            // while (true) {
-            //     len = buffer.pop(data);
-            //     if (J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::get_header_length()))
-            //         break;
-            // }
-            // const auto hl = RTPHeader_trait::get_header_length() + J2KPayloadHeader_trait::get_header_length();
-            // J2kBuf buf(data + hl, len - hl + 1);
-
             while (rtp_recv.check() != RTPReceiver::MAIN_HEADER);
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
             j2k_tile.read(main_header, j2k_packet_table);
-            printf("main header read, seq: %d\n", 0);
+            printf("main header read, seq: %d\n", rtp_recv.get_last_sequence_number());
         }
 #endif
 
-        size_t table_index = 0;
-        uint32_t PID       = 0;
+        size_t table_index     = 0;
+        uint32_t PID           = 0;
+        uint32_t last_sequence = 0;
         while (true) {
 #ifdef DISABLE_TABLE
+            MainHeader main_header;
+            Tile j2k_tile;
+            std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table{};
+            avg_frame = std::chrono::steady_clock::now();
+            {
+                while (rtp_recv.check() != RTPReceiver::MAIN_HEADER);
+                J2kBuf buf(&rtp_recv);
+                main_header.read(buf);
+                j2k_tile.init(main_header, buf);
+                j2k_tile.read(main_header, j2k_packet_table);
+                printf("main header read, seq: %d\n", 0);
+            }
 #endif
             try {
+                last_sequence          = rtp_recv.get_last_sequence_number();
                 const auto recv_result = rtp_recv.check();
-                if (recv_result == RTPReceiver::SUCCESS) { // 正常受信
+                if (likely(recv_result == RTPReceiver::SUCCESS)) { // 正常受信
                     PID = rtp_recv.get_PID();
                     J2kBuf buf(&rtp_recv);
                     while (true) {
@@ -195,12 +199,17 @@ int main(int argc, char** argv) {
                         ++table_index;
                     }
                     assert(buf.empty());
-                } else if (recv_result == RTPReceiver::MAIN_HEADER) { // フレーム終了
-                    table_index = 0;
-                    print_frame();
-                } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス 破棄する PID が recv_result にある
+                    if (unlikely(rtp_recv.EOC())) { // フレーム終了
+                        table_index = 0;
+                        print_frame();
+                    }
+                } else if (recv_result == RTPReceiver::MAIN_HEADER) { // メインパケット出現
+                    ;
+                } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス
                     PID                  = rtp_recv.get_PID();
+                    auto test            = rtp_recv.get_last_sequence_number();
                     size_t loss_precinct = 0;
+                    ++RTP_error_count;
                     while (true) {
                         if (j2k_packet_table[table_index].PID == PID) break;
                         ++loss_precinct;
@@ -210,22 +219,16 @@ int main(int argc, char** argv) {
                             print_frame();
                         }
                     }
-                    fprintf(stderr, "RTP error analysis_frame: %ld, discarded precinct: %ld\n", analysis_frame, loss_precinct);
+                    fprintf(
+                        stderr,
+                        "RTP error analysis_frame: %ld, discarded packet: %d discarded precinct: %ld\n",
+                        analysis_frame, rtp_recv.get_last_sequence_number() - last_sequence, loss_precinct
+                    );
                 } else {
-                    print_frame();
                     break;
                 }
 
-            }
-            // } catch (rtp_sequence_error& e) {
-            //     // メインパケットの出現までパケットを破棄
-            //     // 将来的には timestanp で制御
-            //     auto dest_packet = rtp_recv.dest_packet();
-            //     // fprintf(stderr, "RTP sequence error, pre_seq: %d, seq: %d, lost packets: %d, discarded packsts: %ld, frame: %ld\n", e.pre_sq, e.err_sq, e.err_sq - (e.pre_sq + 1), dest_packet, analysis_frame);
-            // fprintf(stderr, "RTP error analysis_frame: %ld, lost packets: %d, discarded packsts: %ld, data in buf: %ld\n", analysis_frame, e.err_sq - (e.pre_sq + 1), dest_packet, rtp_recv.access_recv_buf().get_num_data());
-            //     ++loss_frame;
-            //     ++RTP_error_count;
-            catch (J2K_packet_error& e) {
+            } catch (J2K_packet_error& e) {
                 buffer.clear();
                 auto dest_packet = buffer.dest(
                     [](const uint8_t* const data) -> bool { return static_cast<bool>(J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)); }
@@ -251,10 +254,6 @@ int main(int argc, char** argv) {
     std::thread produser([&buffer, &receive_start, &receive_finish]() {
         receive_start = std::chrono::steady_clock::now();
         printf("receive thread ready...\n");
-        // while (true) {
-        //     if (!r.receive()) break;
-        //     // std::this_thread::sleep_for(std::chrono::microseconds(10));
-        // }
         while (buffer.receive()) {
             // std::this_thread::yield();
         }
