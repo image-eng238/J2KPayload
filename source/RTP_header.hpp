@@ -26,6 +26,19 @@ namespace RTPHeader_trait {
     inline constexpr uint16_t get_sequence_number(const uint8_t* const pointer) { return pointer[2] << 8 | pointer[3]; };                                 // 16 bits
     inline constexpr uint32_t get_timestamp(const uint8_t* const pointer) { return pointer[4] << 24 | pointer[5] << 16 | pointer[6] << 8 | pointer[7]; }; // 32 bits
     inline constexpr uint32_t get_SSRC(const uint8_t* const pointer) { return pointer[8] << 24 | pointer[9] << 16 | pointer[10] << 8 | pointer[11]; };    // 32 bits
+
+    void print_info(const uint8_t* const pointer) {
+        printf("RTP packet header\n");
+        printf("  V = %d\n", static_cast<uint32_t>(RTPHeader_trait::get_V(pointer)));
+        printf("  P = %d\n", static_cast<uint32_t>(RTPHeader_trait::get_P(pointer)));
+        printf("  X = %d\n", static_cast<uint32_t>(RTPHeader_trait::get_X(pointer)));
+        printf("  CC = %d\n", static_cast<uint32_t>(RTPHeader_trait::get_CC(pointer)));
+        printf("  M = %d\n", static_cast<uint32_t>(RTPHeader_trait::get_M(pointer)));
+        printf("  PT = %d\n", static_cast<uint32_t>(RTPHeader_trait::get_PT(pointer)));
+        printf("  sequence_number = %d\n", static_cast<uint32_t>(RTPHeader_trait::get_sequence_number(pointer)));
+        printf("  timestamp = %d\n", static_cast<uint32_t>(RTPHeader_trait::get_timestamp(pointer)));
+        printf("  SSRC = %d\n", static_cast<uint32_t>(RTPHeader_trait::get_SSRC(pointer)));
+    }
 }
 class RTPHeader {
 public:
@@ -81,6 +94,37 @@ namespace J2KPayloadHeader_trait {
     inline constexpr uint32_t get_body_PID(const uint8_t* const pointer) { return (pointer[5] & 0x0F << 16) | (pointer[6] << 8) | (pointer[7]); } // Precinct Identifier: 20 bits
 
     inline constexpr uint32_t get_extended_sequence_number(const uint8_t* const pointer) { return (get_ESEQ(pointer + RTPHeader_trait::length) << 16) | RTPHeader_trait::get_sequence_number(pointer); }
+
+    void print_info(const uint8_t* const pointer) {
+        const auto hd = RTPHeader_trait::get_header_length();
+        printf("RTP payload header\n");
+        printf("    MH = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_MH(pointer + hd)));
+        printf("    TP = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_TP(pointer + hd)));
+        if (J2KPayloadHeader_trait::get_MH(pointer + hd)) {
+            printf("    ORDH = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_ORDH(pointer + hd)));
+            printf("    P = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_P(pointer + hd)));
+            printf("    XTRAC = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_XTRAC(pointer + hd)));
+            printf("    PTSTAMP = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_PTSTAMP(pointer + hd)));
+            printf("    ESEQ = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_ESEQ(pointer + hd)));
+            printf("    R = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_R(pointer + hd)));
+            printf("    S = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_S(pointer + hd)));
+            printf("    C = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_C(pointer + hd)));
+            printf("    RSVD = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_RSVD(pointer + hd)));
+            printf("    RANGE = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_RANGE(pointer + hd)));
+            printf("    PRIMS = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_PRIMS(pointer + hd)));
+            printf("    TRANS = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_TRANS(pointer + hd)));
+            printf("    MAT = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_main_MAT(pointer + hd)));
+        } else {
+            printf("    RES = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_body_RES(pointer + hd)));
+            printf("    ORDB = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_body_ORDB(pointer + hd)));
+            printf("    QUAL = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_body_QUAL(pointer + hd)));
+            printf("    PTSTAMP = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_body_PTSTAMP(pointer + hd)));
+            printf("    ESEQ = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_body_ESEQ(pointer + hd)));
+            printf("    POS = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_body_POS(pointer + hd)));
+            printf("    PID = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_body_PID(pointer + hd)));
+        };
+        printf("extended_sequence_number = %d\n", J2KPayloadHeader_trait::get_extended_sequence_number(pointer));
+    }
 
 }
 

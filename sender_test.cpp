@@ -49,11 +49,11 @@ int main(int argc, char** argv) {
         if (siz == -1) continue;
         if (siz == 1) break;
         // auto sq = leaky_bucket_buf::get_seq(recv_buf);
-        auto sq = RTPReceiver::get_extended_sequence_number(recv_buf);
+        auto sq = J2KPayloadHeader_trait::get_extended_sequence_number(recv_buf);
         // assert(sq == pre + 1 || pre == 0);
         if (!(sq == pre + 1 || pre == 0)) {
             printf("%d", sq);
-            printf(": error diff: %d, receive size: %d type: %x\n", sq - pre, siz, j2k.get_MH());
+            printf(": error diff: %d, receive size: %ld type: %x\n", sq - pre, siz, j2k.get_MH());
             ++count_err;
         } else {
             // puts("");
