@@ -190,9 +190,9 @@ int main(int argc, char** argv) {
         MainHeader main_header;
         Tile j2k_tile;
         std::array<fast_table, ConstValue::all_precinct> j2k_packet_table{};
-        avg_frame = std::chrono::steady_clock::now();
         {
             while (rtp_recv.check() != RTPReceiver::MAIN_HEADER);
+            avg_frame = std::chrono::steady_clock::now();
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
@@ -210,9 +210,9 @@ int main(int argc, char** argv) {
             MainHeader main_header;
             Tile j2k_tile;
             std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table{};
-            avg_frame = std::chrono::steady_clock::now();
             {
                 while (rtp_recv.check() != RTPReceiver::MAIN_HEADER);
+                avg_frame = std::chrono::steady_clock::now();
                 J2kBuf buf(&rtp_recv);
                 main_header.read(buf);
                 j2k_tile.init(main_header, buf);
