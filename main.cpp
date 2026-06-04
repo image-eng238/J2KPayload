@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
              {'c', "receive_affinity", "CPU affinity of the receive thread"},
              {'C', "analysis_affinity", "CPU affinity of the analysis thread"},
              {0, "Enter", "analysis thread continue at enter"},
-             {0, "OutputFormat", "fps or ms default: fps"},
+             {0, "OutputFormat", "this option is determines the output format for the frame rate. value: fps or ms default: fps"},
              {'h', "help", "Show this"}}
         );
         static_assert(args_list.check());
