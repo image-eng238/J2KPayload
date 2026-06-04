@@ -95,7 +95,12 @@ namespace tklib {
                         if (const auto m = words.find_first_of('\n'); m != std::string_view::npos && n > m) {
                             n = m;
                         }
-                        w = words.substr(0, n);
+                        if (n < explanation_width) {
+                            w = words;
+                            n = std::string_view::npos;
+                        } else {
+                            w = words.substr(0, n);
+                        }
                         printf("%s\n", w.data());
                         // if (n + 1 <= words.length()) {
                         if (n != std::string_view::npos) {
