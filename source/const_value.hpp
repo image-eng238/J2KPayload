@@ -17,6 +17,8 @@ namespace ConstValue {
         num_precinctsubband = 4590,
         num_codeblock       = 4590,
 
+        all_precinct = num_precinct * num_component,
+
         max_image_size = 1048575,
     };
 }

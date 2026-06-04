@@ -136,7 +136,18 @@ int main(int argc, char** argv) {
 
     std::atomic_bool analysis_stoper = false;
 
+    uint32_t frame_lost_precinct = 0;
+
     auto print_frame = [&]() {
+        if (frame_lost_precinct != 0) {
+            const auto lost_per = static_cast<double>(frame_lost_precinct) / ConstValue::all_precinct * 100;
+            fprintf(
+                stderr,
+                "    analysis_frame: %ld, lost_precinct: %d/%d, %.6lf%%\n",
+                analysis_frame, frame_lost_precinct, ConstValue::all_precinct, lost_per
+            );
+            frame_lost_precinct = 0;
+        }
         ++analysis_frame;
         if (out_flame != 0 && analysis_frame % out_flame == 0) {
             auto now     = std::chrono::steady_clock::now();
@@ -157,7 +168,7 @@ int main(int argc, char** argv) {
 #ifndef DISABLE_TABLE
         MainHeader main_header;
         Tile j2k_tile;
-        std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table{};
+        std::array<fast_table, ConstValue::all_precinct> j2k_packet_table{};
         avg_frame = std::chrono::steady_clock::now();
         {
             while (rtp_recv.check() != RTPReceiver::MAIN_HEADER);
@@ -169,8 +180,9 @@ int main(int argc, char** argv) {
         }
 #endif
 
-        size_t table_index     = 0;
-        uint32_t PID           = 0;
+        size_t table_index = 0;
+        uint32_t PID       = 0;
+
         uint32_t last_sequence = 0;
         while (true) {
 #ifdef DISABLE_TABLE
@@ -216,13 +228,19 @@ int main(int argc, char** argv) {
                             ++table_index;
                             if (table_index == j2k_packet_table.size()) {
                                 table_index = 0;
+                                frame_lost_precinct += loss_precinct;
                                 print_frame();
                             }
                         }
+                        frame_lost_precinct += loss_precinct;
+                        if (unlikely(rtp_recv.get_lost_packet() > loss_precinct)) {
+                            loss_frame += 1;
+                            loss_precinct = table_index;
+                        }
                         fprintf(
                             stderr,
-                            "RTP error analysis_frame: %ld, discarded packet: %d discarded precinct: %ld\n",
-                            analysis_frame, rtp_recv.get_last_sequence_number() - last_sequence, loss_precinct
+                            "  RTP error analysis_frame: %ld, lost_packet: %d, discarded_packet: %d, lost_precinct: %ld\n",
+                            analysis_frame, rtp_recv.get_lost_packet(), rtp_recv.get_last_sequence_number() - last_sequence, loss_precinct
                         );
                     } else {
 #ifdef DISABLE_TABLE

@@ -132,7 +132,7 @@ class RTPReceiver {
 
 public:
     RTPReceiver(leaky_bucket_buf* const ptr)
-        : buffer{ptr}, pre_sequence_number{}, PID{}, cache{}, packets{}, pos{}, num_packets{1}, is_EOC{false} {}
+        : buffer{ptr}, pre_sequence_number{}, num_lost_packet{}, PID{}, cache{}, packets{}, pos{}, num_packets{1}, is_EOC{false} {}
     enum {
         FAILURE     = 0,
         SUCCESS     = 1,
@@ -179,6 +179,7 @@ public:
                 }
             } else {
                 // パケットロス発生 次の再同期ポイントまでパケットを破棄
+                num_lost_packet = sequence - (pre_sequence + 1);
                 while (true) {
                     len = buffer->pop(data);
                     if (!get_MH(data + hl) && get_body_ORDB(data + hl)) {
@@ -213,12 +214,14 @@ public:
     }
 
     uint32_t get_last_sequence_number() const { return pre_sequence_number; }
+    uint32_t get_lost_packet() const { return num_lost_packet; }
     uint32_t get_PID() const { return PID; }
     bool EOC() const { return is_EOC; }
 
 private:
     leaky_bucket_buf* buffer;
     uint32_t pre_sequence_number;
+    uint32_t num_lost_packet;
     uint32_t PID;
 
     struct packet {
