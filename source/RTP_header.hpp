@@ -27,7 +27,7 @@ namespace RTPHeader_trait {
     inline constexpr uint32_t get_timestamp(const uint8_t* const pointer) { return pointer[4] << 24 | pointer[5] << 16 | pointer[6] << 8 | pointer[7]; }; // 32 bits
     inline constexpr uint32_t get_SSRC(const uint8_t* const pointer) { return pointer[8] << 24 | pointer[9] << 16 | pointer[10] << 8 | pointer[11]; };    // 32 bits
 
-    void print_info(const uint8_t* const pointer) {
+    inline void print_info(const uint8_t* const pointer) {
         printf("RTP packet header\n");
         printf("  V = %d\n", static_cast<uint32_t>(RTPHeader_trait::get_V(pointer)));
         printf("  P = %d\n", static_cast<uint32_t>(RTPHeader_trait::get_P(pointer)));
@@ -95,7 +95,7 @@ namespace J2KPayloadHeader_trait {
 
     inline constexpr uint32_t get_extended_sequence_number(const uint8_t* const pointer) { return (get_ESEQ(pointer + RTPHeader_trait::length) << 16) | RTPHeader_trait::get_sequence_number(pointer); }
 
-    void print_info(const uint8_t* const pointer) {
+    inline void print_info(const uint8_t* const pointer) {
         const auto hd = RTPHeader_trait::get_header_length();
         printf("RTP payload header\n");
         printf("    MH = %d\n", static_cast<uint32_t>(J2KPayloadHeader_trait::get_MH(pointer + hd)));
