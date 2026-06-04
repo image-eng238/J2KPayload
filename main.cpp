@@ -53,6 +53,11 @@ int main(int argc, char** argv) {
     cpu_set_t affinity_analysis;
     CPU_ZERO(&affinity_analysis);
     bool is_enter = false;
+    enum class OutF : uint8_t {
+        FPS,
+        MS
+    };
+    OutF output_format = OutF::FPS;
 
     {
         using namespace tklib;
@@ -63,6 +68,7 @@ int main(int argc, char** argv) {
              {'c', "receive_affinity", "CPU affinity of the receive thread"},
              {'C', "analysis_affinity", "CPU affinity of the analysis thread"},
              {0, "Enter", "analysis thread continue at enter"},
+             {0, "OutputFormat", "fps or ms default: fps"},
              {'h', "help", "Show this"}}
         );
         static_assert(args_list.check());
@@ -109,6 +115,17 @@ int main(int argc, char** argv) {
                 case args_list("Enter"):
                     is_enter = true;
                     break;
+                case args_list("OutputFormat"): {
+                    const auto tmp = args.pop();
+                    if (tmp == "fps") {
+                        output_format = OutF::FPS;
+                    } else if (tmp == "ms") {
+                        output_format = OutF::MS;
+                    } else {
+                        fprintf(stderr, "unknown parameter: %s\n", tmp.data());
+                        exit(1);
+                    }
+                } break;
                 case args_list('h'):
                     args_list.print_arg();
                     exit(0);
@@ -150,10 +167,14 @@ int main(int argc, char** argv) {
         }
         ++analysis_frame;
         if (out_flame != 0 && analysis_frame % out_flame == 0) {
-            auto now     = std::chrono::steady_clock::now();
-            auto avg     = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-            auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
-            printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
+            auto now = std::chrono::steady_clock::now();
+            auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
+            if (output_format == OutF::FPS) {
+                const auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
+                printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
+            } else if (output_format == OutF::MS) {
+                printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, (static_cast<float>(avg.count()) / out_flame) / 1000);
+            }
             avg_frame = now;
         }
     };
