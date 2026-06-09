@@ -291,9 +291,12 @@ int main(int argc, char** argv) {
 
     std::thread produser([&buffer, &receive_start, &receive_finish]() {
         receive_start = std::chrono::steady_clock::now();
+        const auto T  = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{1.0 / (90 * 1000)});
+        auto abs_time = std::chrono::steady_clock::now();
         printf("receive thread ready...\n");
         while (buffer.receive()) {
-            // std::this_thread::yield();
+            abs_time += T;
+            std::this_thread::sleep_until(abs_time);
         }
         receive_finish = std::chrono::steady_clock::now();
         printf("receive finish: %ld\n", (receive_finish - receive_start).count());
