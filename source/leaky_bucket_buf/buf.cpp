@@ -27,7 +27,7 @@ constexpr void leaky_bucket_buf::set_udp(UDPReceiver* const ptr) {
     this->udp = ptr;
 }
 
-bool leaky_bucket_buf::receive() {
+int leaky_bucket_buf::receive() {
     // uint8_t tmp_buf[BUFFER_SIZE];
     // int tmp_data_size = udp->receive(tmp_buf, BUFFER_SIZE);
 
@@ -54,17 +54,17 @@ bool leaky_bucket_buf::receive() {
 #ifdef GENERATE_RECEIVE_PROBABILITY
             ++count_agaein;
 #endif
-            return true;
+            return AGAIN;
         } else {
             perror("receive error");
-            return false;
+            return FINISH;
         }
     }
 #ifdef GENERATE_RECEIVE_PROBABILITY
     ++count_receive;
 #endif
 
-    bool output = writing->data[0] & 0x80;
+    int output = (writing->data[0] & 0x80) ? RECEIVED : FINISH;
 
     // ここで writing と next_ptr の順序を確認し，ソートする．
     // RTP の場合はシーケンス番号をチェックしてソート．

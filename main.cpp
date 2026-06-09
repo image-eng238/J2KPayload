@@ -294,9 +294,15 @@ int main(int argc, char** argv) {
         const auto T  = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{1.0 / (90 * 1000)});
         auto abs_time = std::chrono::steady_clock::now();
         printf("receive thread ready...\n");
-        while (buffer.receive()) {
-            abs_time += T;
-            std::this_thread::sleep_until(abs_time);
+        while (true) {
+            const auto result = buffer.receive();
+            if (result == leaky_bucket_buf::AGAIN) continue;
+            if (result == leaky_bucket_buf::RECEIVED) {
+                abs_time += T;
+                std::this_thread::sleep_until(abs_time);
+            } else {
+                break;
+            }
         }
         receive_finish = std::chrono::steady_clock::now();
         printf("receive finish: %ld\n", (receive_finish - receive_start).count());

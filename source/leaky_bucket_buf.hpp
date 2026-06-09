@@ -25,11 +25,16 @@ public:
 #endif
     static constexpr size_t BUFFER_SIZE = 1384;
     static constexpr size_t NUM_BUFFER  = 5000;
+    enum {
+        FINISH   = -1,
+        AGAIN    = 0,
+        RECEIVED = 1
+    };
     leaky_bucket_buf();
     leaky_bucket_buf(UDPReceiver* const);
 
     constexpr void set_udp(UDPReceiver* const);
-    bool receive();
+    int receive();
     int pop(uint8_t*&);
     void clear();
     static uint32_t get_seq(const uint8_t* const data) { return static_cast<uint32_t>(data[15] << 0x10) | static_cast<uint32_t>(data[2] << 0x8) | static_cast<uint32_t>(data[3]); }
