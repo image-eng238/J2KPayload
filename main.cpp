@@ -290,22 +290,44 @@ int main(int argc, char** argv) {
     });
 
     std::thread produser([&buffer, &receive_start, &receive_finish]() {
-        receive_start = std::chrono::steady_clock::now();
-        const auto T  = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{1.0 / (90 * 1000)});
-        auto abs_time = std::chrono::steady_clock::now();
+#ifdef GENERATE_RECEIVE_PROBABILITY
+        size_t count_receive = 0;
+        size_t count_again   = 0;
+#endif
+
+        receive_start  = std::chrono::steady_clock::now();
+        const auto T   = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{1.0 / (90 * 1000)});
+        const auto T_2 = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{0.25 / (90 * 1000)});
+        auto abs_time  = std::chrono::steady_clock::now();
         printf("receive thread ready...\n");
         while (true) {
             const auto result = buffer.receive();
-            if (result == leaky_bucket_buf::AGAIN) continue;
-            if (result == leaky_bucket_buf::RECEIVED) {
-                abs_time += T;
+            if (result == leaky_bucket_buf::AGAIN) {
+#ifdef GENERATE_RECEIVE_PROBABILITY
+                ++count_again;
+#endif
+                abs_time += T_2;
                 std::this_thread::sleep_until(abs_time);
+                continue;
+            };
+            if (result == leaky_bucket_buf::RECEIVED) {
+#ifdef GENERATE_RECEIVE_PROBABILITY
+                ++count_receive;
+#endif
+                abs_time += T_2;
+                std::this_thread::sleep_until(abs_time);
+                continue;
             } else {
                 break;
             }
         }
         receive_finish = std::chrono::steady_clock::now();
         printf("receive finish: %ld\n", (receive_finish - receive_start).count());
+#ifdef GENERATE_RECEIVE_PROBABILITY
+        printf("receive: %ld\n", count_receive);
+        printf("again:   %ld\n", count_again);
+        printf("receive probability: %lf%% \n", static_cast<double>(count_receive) / static_cast<double>(count_receive + count_again));
+#endif
     });
 
     if (CPU_COUNT(&affinity) != 0) {
@@ -338,11 +360,6 @@ int main(int argc, char** argv) {
     printf("lost frame: %ld\n", loss_frame);
     printf("RTP packet error: %ld\n", RTP_error_count);
     printf("J2K packet error: %ld\n", J2K_error_count);
-#ifdef GENERATE_RECEIVE_PROBABILITY
-    printf("receive: %ld\n", leaky_bucket_buf::count_receive);
-    printf("again:   %ld\n", leaky_bucket_buf::count_agaein);
-    printf("receive probability: %lf%% \n", static_cast<double>(leaky_bucket_buf::count_receive) / static_cast<double>(leaky_bucket_buf::count_receive + leaky_bucket_buf::count_agaein));
-#endif
     // printf("pkt_header_true: %ld\n", CodeBlock::pkt_header_true);
     // printf("pkt_header_false: %ld\n", CodeBlock::pkt_header_false);
     // printf("prob: %lf%%\n", static_cast<double>(CodeBlock::pkt_header_true) / (CodeBlock::pkt_header_true + CodeBlock::pkt_header_false));

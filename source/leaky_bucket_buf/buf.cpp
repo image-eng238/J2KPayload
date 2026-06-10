@@ -51,18 +51,12 @@ int leaky_bucket_buf::receive() {
     writing->data_size = static_cast<int>(udp->receive(writing->data, BUFFER_SIZE));
     if (writing->data_size == -1) {
         if (BRANCH_PROB(errno == EAGAIN, 1.0)) {
-#ifdef GENERATE_RECEIVE_PROBABILITY
-            ++count_agaein;
-#endif
             return AGAIN;
         } else {
             perror("receive error");
             return FINISH;
         }
     }
-#ifdef GENERATE_RECEIVE_PROBABILITY
-    ++count_receive;
-#endif
 
     int output = (writing->data[0] & 0x80) ? RECEIVED : FINISH;
 
