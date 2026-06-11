@@ -17,10 +17,16 @@ public:
 };
 
 class leaky_bucket_buf {
-
 public:
     static constexpr size_t BUFFER_SIZE = 1384;
     static constexpr size_t NUM_BUFFER  = 5000;
+    struct link_list {
+        int data_size;
+        uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
+        link_list* next_ptr;
+        bool empty() const { return data_size <= 0; }
+    };
+
     enum {
         FINISH   = -1,
         AGAIN    = 0,
@@ -39,17 +45,13 @@ public:
         return current_num_data + tmp_num_data;
     }
     size_t get_num_data_unsafe() const { return current_num_data + tmp_num_data; }
+    const link_list* get_last_packet() const { return last_receive; }
 
 private:
-    struct link_list {
-        int data_size;
-        uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
-        link_list* next_ptr;
-        bool empty() const { return data_size <= 0; }
-    };
-    link_list* next_write; // receive からのみアクセス
-    link_list* next_pop;   // pop からのみアクセス
-    UDPReceiver* udp;      // receive のみからアクセス
+    link_list* next_write;   // receive からのみアクセス
+    link_list* next_pop;     // pop からのみアクセス
+    link_list* last_receive; // おそらく receive からのみアクセス
+    UDPReceiver* udp;        // receive のみからアクセス
 
     size_t current_num_data; // 双方からアクセス 同期処理を行う
     size_t tmp_num_data;

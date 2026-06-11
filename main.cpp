@@ -296,38 +296,44 @@ int main(int argc, char** argv) {
 #endif
         auto to_duration = [](const double t) { return std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{t / J2KPayloadHeader_trait::media_clock_Hz}); };
         printf("receive thread ready...\n");
-        size_t img_inc       = 0;
-        const auto pkt_inc_r = to_duration(1.0);
-        const auto pkt_inc_a = to_duration(0.25);
-        receive_start        = std::chrono::steady_clock::now();
-        auto packet_abs      = receive_start;
-        auto image_abs       = receive_start;
+        size_t img_inc         = 0;
+        uint32_t pre_timestamp = 0;
+        const auto pkt_inc_r   = to_duration(1.0);
+        const auto pkt_inc_a   = to_duration(0.25);
+        receive_start          = std::chrono::steady_clock::now();
+        auto packet_abs        = receive_start;
+        auto image_abs         = receive_start;
         while (true) {
             const auto result = buffer.receive();
 #ifdef GENERATE_RECEIVE_PROBABILITY
             if (result == leaky_bucket_buf::AGAIN) ++count_again;
             if (result == leaky_bucket_buf::RECEIVED) ++count_receive;
 #endif
-            if (result == leaky_bucket_buf::RECEIVED) {
-                if (false) { // EOCの有無を確認
-                    // true: タイムスタンプによるフレームの再生タイミングをもとに待機
-                    image_abs += to_duration(img_inc);
-                    std::this_thread::sleep_until(image_abs);
-                    continue;
-                } else {
-                    // false: メディアクロックをもとに待機
-                    packet_abs += pkt_inc_r;
+            if (likely(result != leaky_bucket_buf::FINISH)) {
+                if (result == leaky_bucket_buf::RECEIVED) {
+                    auto pkt = buffer.get_last_packet();
+                    if (RTPHeader_trait::get_M(pkt->data)) { // EOCの有無を確認
+                        // true: タイムスタンプによるフレームの再生タイミングをもとに待機
+                        const auto tp = RTPHeader_trait::get_timestamp(pkt->data);
+                        pre_timestamp = tp;
+                        assert(!(tp - pre_timestamp));
+                        image_abs += to_duration(tp - pre_timestamp);
+                        std::this_thread::sleep_until(image_abs);
+                        continue;
+                    } else {
+                        // false: メディアクロックをもとに待機
+                        packet_abs += pkt_inc_r;
+                        std::this_thread::sleep_until(packet_abs);
+                        continue;
+                    }
+                }
+                if (result == leaky_bucket_buf::AGAIN) {
+                    // false: メディアクロックの 1/4 で待機
+                    packet_abs += pkt_inc_a;
                     std::this_thread::sleep_until(packet_abs);
                     continue;
-                }
-            }
-            if (result == leaky_bucket_buf::AGAIN) {
-                // false: メディアクロックの 1/4 で待機
-                packet_abs += pkt_inc_a;
-                std::this_thread::sleep_until(packet_abs);
-                continue;
-            };
-            if (likely(result == leaky_bucket_buf::FINISH)) {
+                };
+            } else {
                 break;
             }
         }

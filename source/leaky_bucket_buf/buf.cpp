@@ -8,7 +8,7 @@
 #define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
 
 leaky_bucket_buf::leaky_bucket_buf()
-    : next_write{buf_list}, next_pop{buf_list}, udp{}, current_num_data{}, tmp_num_data{}, mtx{}, cond{}, buf_list{} {
+    : next_write{buf_list}, next_pop{buf_list}, last_receive{nullptr}, udp{}, current_num_data{}, tmp_num_data{}, mtx{}, cond{}, buf_list{} {
 
     for (size_t i = 0; i < NUM_BUFFER - 1; ++i) {
         buf_list[i].next_ptr = &buf_list[i + 1];
@@ -28,26 +28,11 @@ constexpr void leaky_bucket_buf::set_udp(UDPReceiver* const ptr) {
 }
 
 int leaky_bucket_buf::receive() {
-    // uint8_t tmp_buf[BUFFER_SIZE];
-    // int tmp_data_size = udp->receive(tmp_buf, BUFFER_SIZE);
-
-    // if (tmp_data_size == -1) {
-    //     if (errno == EAGAIN) {
-    //         return true;
-    //     } else {
-    //         perror("receive error");
-    //         return false;
-    //     }
-    // }
-
-    // assert(current_num_data + tmp_num_data < NUM_BUFFER); // buffer leak
 
     auto& writing = next_write;
     LOAD_INTO_CACHE(writing, opt_macro::WRITE, opt_macro::HIGH_TEMPORAL);
     // assert(writing->empty());
 
-    // memcpy(writing->data, tmp_buf, tmp_data_size);
-    // writing->data_size = tmp_data_size;
     writing->data_size = static_cast<int>(udp->receive(writing->data, BUFFER_SIZE));
     if (writing->data_size == -1) {
         if (BRANCH_PROB(errno == EAGAIN, 1.0)) {
@@ -60,10 +45,8 @@ int leaky_bucket_buf::receive() {
 
     int output = (writing->data[0] & 0x80) ? RECEIVED : FINISH;
 
-    // ここで writing と next_ptr の順序を確認し，ソートする．
-    // RTP の場合はシーケンス番号をチェックしてソート．
-
-    next_write = writing->next_ptr;
+    next_write   = writing->next_ptr;
+    last_receive = writing;
 
     std::unique_lock lk(mtx, std::defer_lock);
     if (lk.try_lock()) {
