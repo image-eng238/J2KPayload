@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
         }
     };
 
-    std::thread consumer([&] {
+    std::thread analysis_thread([&] {
         if (unlikely(is_enter)) {
             while (!analysis_stoper);
         }
@@ -289,38 +289,45 @@ int main(int argc, char** argv) {
         printf("analysis finish: %ld\n", (analysis_finish - analysis_start).count());
     });
 
-    std::thread produser([&buffer, &receive_start, &receive_finish]() {
+    std::thread receive_thread([&buffer, &receive_start, &receive_finish]() {
 #ifdef GENERATE_RECEIVE_PROBABILITY
         size_t count_receive = 0;
         size_t count_again   = 0;
 #endif
-
+        auto to_duration = [](const double t) { return std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{t / J2KPayloadHeader_trait::media_clock_Hz}); };
         printf("receive thread ready...\n");
-        const auto T    = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{1.0 / (90 * 1000)});
-        const auto T_2  = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{0.25 / (90 * 1000)});
-        receive_start   = std::chrono::steady_clock::now();
-        auto packet_abs = receive_start;
-        auto image_abs  = receive_start;
+        size_t img_inc       = 0;
+        const auto pkt_inc_r = to_duration(1.0);
+        const auto pkt_inc_a = to_duration(0.25);
+        receive_start        = std::chrono::steady_clock::now();
+        auto packet_abs      = receive_start;
+        auto image_abs       = receive_start;
         while (true) {
             const auto result = buffer.receive();
-            if (likely(result != leaky_bucket_buf::FINISH)) {
-                if (result == leaky_bucket_buf::RECEIVED) {
-                    if (false) { // EOCの有無を確認
-                        // true: image_absで待機
-                    } else {
-                        // false: packet_absで待機
-                        packet_abs += T;
-                    }
-                }
-                if (result == leaky_bucket_buf::AGAIN) {
-                    packet_abs += T_2;
-                };
 #ifdef GENERATE_RECEIVE_PROBABILITY
-                if (result == leaky_bucket_buf::AGAIN) ++count_again;
-                if (result == leaky_bucket_buf::RECEIVED) ++count_receive;
+            if (result == leaky_bucket_buf::AGAIN) ++count_again;
+            if (result == leaky_bucket_buf::RECEIVED) ++count_receive;
 #endif
+            if (result == leaky_bucket_buf::RECEIVED) {
+                if (false) { // EOCの有無を確認
+                    // true: タイムスタンプによるフレームの再生タイミングをもとに待機
+                    image_abs += to_duration(img_inc);
+                    std::this_thread::sleep_until(image_abs);
+                    continue;
+                } else {
+                    // false: メディアクロックをもとに待機
+                    packet_abs += pkt_inc_r;
+                    std::this_thread::sleep_until(packet_abs);
+                    continue;
+                }
+            }
+            if (result == leaky_bucket_buf::AGAIN) {
+                // false: メディアクロックの 1/4 で待機
+                packet_abs += pkt_inc_a;
                 std::this_thread::sleep_until(packet_abs);
-            } else {
+                continue;
+            };
+            if (likely(result == leaky_bucket_buf::FINISH)) {
                 break;
             }
         }
@@ -334,13 +341,13 @@ int main(int argc, char** argv) {
     });
 
     if (CPU_COUNT(&affinity) != 0) {
-        if (auto result = pthread_setaffinity_np(produser.native_handle(), sizeof(affinity), &affinity); result != 0) {
+        if (auto result = pthread_setaffinity_np(receive_thread.native_handle(), sizeof(affinity), &affinity); result != 0) {
             fprintf(stderr, "pthread_setaffinity_up() error: %d\n", result);
             exit(1);
         }
     }
     if (CPU_COUNT(&affinity_analysis) != 0) {
-        if (auto result = pthread_setaffinity_np(consumer.native_handle(), sizeof(affinity_analysis), &affinity_analysis); result != 0) {
+        if (auto result = pthread_setaffinity_np(analysis_thread.native_handle(), sizeof(affinity_analysis), &affinity_analysis); result != 0) {
             fprintf(stderr, "pthread_setaffinity_up() error: %d\n", result);
             exit(1);
         }
@@ -352,8 +359,8 @@ int main(int argc, char** argv) {
         analysis_stoper = true;
     }
 
-    consumer.join();
-    produser.join();
+    analysis_thread.join();
+    receive_thread.join();
 
     auto diff = ((analysis_finish - analysis_start) - (receive_finish - receive_start)).count();
     if (diff < 0) diff *= -1;

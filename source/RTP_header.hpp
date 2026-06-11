@@ -62,7 +62,8 @@ private:
     const uint8_t* pointer;
 };
 namespace J2KPayloadHeader_trait {
-    constexpr uint8_t length = 8;
+    constexpr uint8_t length        = 8;
+    constexpr size_t media_clock_Hz = 90'000;
     inline constexpr uint8_t get_header_length() { return length; }
     inline constexpr uint8_t get_MH(const uint8_t* const pointer) { return (pointer[0] & 0xC0) >> 6; }                    // Codestream Main Header Presence: 2 bits
     inline constexpr uint8_t get_TP(const uint8_t* const pointer) { return pointer[0] & 0x38; }                           // Image Type: 3 bits
