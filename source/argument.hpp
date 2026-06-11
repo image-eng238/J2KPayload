@@ -91,7 +91,7 @@ namespace tklib {
                     std::string w;
                     out_length = 0;
                     while (true) {
-                        auto n = words.find_last_of(' ', explanation_width);
+                        auto n = words.find_first_of(' ', explanation_width);
                         if (const auto m = words.find_first_of('\n'); m != std::string_view::npos && n > m) {
                             n = m;
                         }
