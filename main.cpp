@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
              {'f', "frame", "The interval between frames to display default: 60"},
              {'c', "receive_affinity", "CPU affinity of the receive thread"},
              {'C', "analysis_affinity", "CPU affinity of the analysis thread"},
-             {0, "ReceiveFrequency", "Frequency of the receiving thread. Fromat: \"receive:again\",default: 0.75:0.25"},
+             {0, "ReceiveFrequency", "The multiplier for the receiving thread frequency (90kHz). Fromat: \"receive:again\",default: 0.75:0.25"},
              {0, "Enter", "analysis thread continue at enter"},
              {0, "OutputFormat", "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
              {'h', "help", "Show this"}}
