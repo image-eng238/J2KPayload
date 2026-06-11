@@ -329,7 +329,7 @@ int main(int argc, char** argv) {
 #ifdef GENERATE_RECEIVE_PROBABILITY
         printf("receive: %ld\n", count_receive);
         printf("again:   %ld\n", count_again);
-        printf("receive probability: %lf%% \n", static_cast<double>(count_receive) / static_cast<double>(count_receive + count_again));
+        printf("receive probability: %lf%% \n", static_cast<double>(count_receive) / static_cast<double>(count_receive + count_again) * 100);
 #endif
     });
 
