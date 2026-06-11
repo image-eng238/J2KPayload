@@ -52,6 +52,8 @@ int main(int argc, char** argv) {
     CPU_ZERO(&affinity);
     cpu_set_t affinity_analysis;
     CPU_ZERO(&affinity_analysis);
+    double rf_r   = 0.75;
+    double rf_a   = 0.25;
     bool is_enter = false;
     enum class OutF : uint8_t {
         FPS,
@@ -67,6 +69,7 @@ int main(int argc, char** argv) {
              {'f', "frame", "The interval between frames to display default: 60"},
              {'c', "receive_affinity", "CPU affinity of the receive thread"},
              {'C', "analysis_affinity", "CPU affinity of the analysis thread"},
+             {0, "ReceiveFrequency", "Frequency of the receiving thread. Fromat: \"receive:again\",default: 0.75:0.25"},
              {0, "Enter", "analysis thread continue at enter"},
              {0, "OutputFormat", "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
              {'h', "help", "Show this"}}
@@ -111,6 +114,17 @@ int main(int argc, char** argv) {
                             ++i;
                         }
                     }
+                } break;
+                case args_list("ReceiveFrequency"): {
+                    auto tmp = args.pop();
+                    auto cp  = tmp.find_first_of(':');
+                    if (cp != std::string_view::npos) {
+                        std::string_view tmp_r = tmp.substr(0, cp);
+                        std::string_view tmp_a = tmp.substr(cp + 1);
+                        std::from_chars(tmp_r.begin(), tmp_r.end(), rf_r);
+                        std::from_chars(tmp_a.begin(), tmp_a.end(), rf_a);
+                    }
+
                 } break;
                 case args_list("Enter"):
                     is_enter = true;
@@ -289,7 +303,7 @@ int main(int argc, char** argv) {
         printf("analysis finish: %ld\n", (analysis_finish - analysis_start).count());
     });
 
-    std::thread receive_thread([&buffer, &receive_start, &receive_finish]() {
+    std::thread receive_thread([&]() {
 #ifdef GENERATE_RECEIVE_PROBABILITY
         size_t count_receive = 0;
         size_t count_again   = 0;
@@ -298,8 +312,8 @@ int main(int argc, char** argv) {
         printf("receive thread ready...\n");
         size_t img_inc         = 0;
         uint32_t pre_timestamp = 0;
-        const auto pkt_inc_r   = to_duration(1.0);
-        const auto pkt_inc_a   = to_duration(0.25);
+        const auto pkt_inc_r   = to_duration(rf_r);
+        const auto pkt_inc_a   = to_duration(rf_a);
         receive_start          = std::chrono::steady_clock::now();
         auto packet_abs        = receive_start;
         auto image_abs         = receive_start;
@@ -315,9 +329,9 @@ int main(int argc, char** argv) {
                     if (RTPHeader_trait::get_M(pkt->data)) { // EOCの有無を確認
                         // true: タイムスタンプによるフレームの再生タイミングをもとに待機
                         const auto tp = RTPHeader_trait::get_timestamp(pkt->data);
+                        img_inc       = (tp && pre_timestamp) ? tp - pre_timestamp : 0;
+                        image_abs += to_duration(img_inc);
                         pre_timestamp = tp;
-                        assert(!(tp - pre_timestamp));
-                        image_abs += to_duration(tp - pre_timestamp);
                         std::this_thread::sleep_until(image_abs);
                         continue;
                     } else {
