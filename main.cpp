@@ -295,28 +295,31 @@ int main(int argc, char** argv) {
         size_t count_again   = 0;
 #endif
 
-        receive_start  = std::chrono::steady_clock::now();
-        const auto T   = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{1.0 / (90 * 1000)});
-        const auto T_2 = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{0.25 / (90 * 1000)});
-        auto abs_time  = std::chrono::steady_clock::now();
         printf("receive thread ready...\n");
+        const auto T    = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{1.0 / (90 * 1000)});
+        const auto T_2  = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{0.25 / (90 * 1000)});
+        receive_start   = std::chrono::steady_clock::now();
+        auto packet_abs = receive_start;
+        auto image_abs  = receive_start;
         while (true) {
             const auto result = buffer.receive();
-            if (result == leaky_bucket_buf::AGAIN) {
+            if (likely(result != leaky_bucket_buf::FINISH)) {
+                if (result == leaky_bucket_buf::RECEIVED) {
+                    if (false) { // EOCの有無を確認
+                        // true: image_absで待機
+                    } else {
+                        // false: packet_absで待機
+                        packet_abs += T;
+                    }
+                }
+                if (result == leaky_bucket_buf::AGAIN) {
+                    packet_abs += T_2;
+                };
 #ifdef GENERATE_RECEIVE_PROBABILITY
-                ++count_again;
+                if (result == leaky_bucket_buf::AGAIN) ++count_again;
+                if (result == leaky_bucket_buf::RECEIVED) ++count_receive;
 #endif
-                abs_time += T_2;
-                std::this_thread::sleep_until(abs_time);
-                continue;
-            };
-            if (result == leaky_bucket_buf::RECEIVED) {
-#ifdef GENERATE_RECEIVE_PROBABILITY
-                ++count_receive;
-#endif
-                abs_time += T_2;
-                std::this_thread::sleep_until(abs_time);
-                continue;
+                std::this_thread::sleep_until(packet_abs);
             } else {
                 break;
             }
