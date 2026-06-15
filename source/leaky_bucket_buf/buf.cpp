@@ -29,7 +29,7 @@ constexpr void leaky_bucket_buf::set_udp(UDPReceiver* const ptr) {
 
 int leaky_bucket_buf::receive() {
 
-    auto& writing = next_write;
+    auto* writing = next_write;
     LOAD_INTO_CACHE(writing, opt_macro::WRITE, opt_macro::HIGH_TEMPORAL);
     // assert(writing->empty());
 
@@ -71,10 +71,10 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     std::unique_lock lk(mtx);
     cond.wait(lk, [this] { return current_num_data > 0; });
 
-    auto popping       = next_pop;
-    auto out           = popping->data_size;
-    ptr                = popping->data;
-    popping->data_size = 0;
+    auto popping = next_pop;
+    auto out     = popping->data_size;
+    ptr          = popping->data;
+    // popping->data_size = 0;
 
     next_pop = popping->next_ptr;
 

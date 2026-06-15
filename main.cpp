@@ -331,6 +331,7 @@ int main(int argc, char** argv) {
                         const auto tp = RTPHeader_trait::get_timestamp(pkt->data);
                         img_inc       = (tp && pre_timestamp) ? tp - pre_timestamp : 0;
                         image_abs += to_duration(img_inc);
+                        packet_abs    = image_abs;
                         pre_timestamp = tp;
                         std::this_thread::sleep_until(image_abs);
                         continue;
