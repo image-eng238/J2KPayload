@@ -169,31 +169,33 @@ int main(int argc, char** argv) {
 
     uint32_t frame_lost_precinct = 0;
 
-    auto print_frame = [&]() {
-        if (frame_lost_precinct != 0) {
-            const auto lost_per = static_cast<double>(frame_lost_precinct) / ConstValue::all_precinct * 100;
-            fprintf(
-                stderr,
-                "    analysis_frame: %ld, lost_precinct: %d/%d, %.6lf%%\n",
-                analysis_frame, frame_lost_precinct, ConstValue::all_precinct, lost_per
-            );
-            frame_lost_precinct = 0;
-        }
-        ++analysis_frame;
-        if (out_flame != 0 && analysis_frame % out_flame == 0) {
-            auto now = std::chrono::steady_clock::now();
-            auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-            if (output_format == OutF::FPS) {
-                const auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
-                printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
-            } else if (output_format == OutF::MS) {
-                printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, (static_cast<float>(avg.count()) / out_flame) / 1000);
-            }
-            avg_frame = now;
-        }
-    };
-
     std::thread analysis_thread([&] {
+        size_t table_index     = 0;
+        uint32_t PID           = 0;
+        uint32_t last_sequence = 0;
+        auto frame_update      = [&]() {
+            if (frame_lost_precinct != 0) {
+                const auto lost_per = static_cast<double>(frame_lost_precinct) / ConstValue::all_precinct * 100;
+                fprintf(
+                    stderr,
+                    "    analysis_frame: %ld, lost_precinct: %d/%d, %.6lf%%\n",
+                    analysis_frame, frame_lost_precinct, ConstValue::all_precinct, lost_per
+                );
+                frame_lost_precinct = 0;
+            }
+            ++analysis_frame;
+            if (out_flame != 0 && analysis_frame % out_flame == 0) {
+                auto now = std::chrono::steady_clock::now();
+                auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
+                if (output_format == OutF::FPS) {
+                    const auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
+                    printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
+                } else if (output_format == OutF::MS) {
+                    printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, (static_cast<float>(avg.count()) / out_flame) / 1000);
+                }
+                avg_frame = now;
+            }
+        };
         if (unlikely(is_enter)) {
             while (!analysis_stoper);
         }
@@ -215,10 +217,6 @@ int main(int argc, char** argv) {
         }
 #endif
 
-        size_t table_index = 0;
-        uint32_t PID       = 0;
-
-        uint32_t last_sequence = 0;
         while (true) {
 #ifdef DISABLE_TABLE
             MainHeader main_header;
@@ -249,7 +247,7 @@ int main(int argc, char** argv) {
                         // assert(buf.empty());
                         if (unlikely(rtp_recv.EOC())) { // フレーム終了
                             table_index = 0;
-                            print_frame();
+                            frame_update();
                         }
                     } else if (recv_result == RTPReceiver::MAIN_HEADER) { // メインパケット出現
                         ;
@@ -264,7 +262,7 @@ int main(int argc, char** argv) {
                             if (table_index == j2k_packet_table.size()) {
                                 table_index = 0;
                                 frame_lost_precinct += loss_precinct;
-                                print_frame();
+                                frame_update();
                             }
                         }
                         frame_lost_precinct += loss_precinct;
