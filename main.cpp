@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
     CPU_ZERO(&affinity);
     cpu_set_t affinity_analysis;
     CPU_ZERO(&affinity_analysis);
-    double rf_r   = 0.75;
+    double rf_r   = 0.5;
     double rf_a   = 0.25;
     bool is_enter = false;
     enum class OutF : uint8_t {
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
              {'f', "frame", "The interval between frames to display default: 60"},
              {'c', "receive_affinity", "CPU affinity of the receive thread"},
              {'C', "analysis_affinity", "CPU affinity of the analysis thread"},
-             {0, "ReceiveFrequency", "The multiplier for the receiving thread frequency (90kHz). Fromat: \"receive:again\",default: 0.75:0.25"},
+             {0, "ReceiveFrequency", "The multiplier for the receiving thread frequency (90kHz). Fromat: \"receive:again\",default: 0.5:0.25"},
              {0, "Enter", "analysis thread continue at enter"},
              {0, "OutputFormat", "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
              {'h', "help", "Show this"}}
@@ -324,6 +324,7 @@ int main(int argc, char** argv) {
         const auto pkt_inc_a   = to_duration(rf_a);
         receive_start          = std::chrono::steady_clock::now();
         auto packet_abs        = receive_start;
+        bool is_img_init       = false;
         while (true) {
             const auto result = buffer.receive();
 #ifdef GENERATE_RECEIVE_PROBABILITY
@@ -334,10 +335,11 @@ int main(int argc, char** argv) {
                 const auto* pkt = buffer.get_last_packet();
                 if (J2KPayloadHeader_trait::get_MH(pkt->data + RTPHeader_trait::get_header_length())) { // EOCの有無を確認 メインヘッダで確認に変更
                     const auto tp = RTPHeader_trait::get_timestamp(pkt->data);
-                    if (pre_timestamp != 0 && tp != 0) {
+                    if (!is_img_init && pre_timestamp != 0 && tp != 0) {
                         // std::unique_lock lk{img_clock_locker};
                         img_inc.store(tp - pre_timestamp, std::memory_order_release);
                         img_clock_cond.notify_one();
+                        is_img_init = true;
                     }
                     pre_timestamp = tp;
                 }
