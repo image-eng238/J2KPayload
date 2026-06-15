@@ -61,6 +61,10 @@ int main(int argc, char** argv) {
     };
     OutF output_format = OutF::FPS;
 
+#ifdef RTP_CLOCK_CHECK
+    size_t clock_check_size = 120;
+#endif
+
     {
         using namespace tklib;
         static constexpr argument_list args_list(
@@ -72,6 +76,9 @@ int main(int argc, char** argv) {
              {0, "ReceiveFrequency", "The multiplier for the receiving thread frequency (90kHz). Fromat: \"receive:again\",default: 0.5:0.25"},
              {0, "Enter", "analysis thread continue at enter"},
              {0, "OutputFormat", "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
+#ifdef RTP_CLOCK_CHECK
+             {0, "ClockCheckSize", "Number of frames to verify the clock rate. default: 120"},
+#endif
              {'h', "help", "Show this"}}
         );
         static_assert(args_list.check());
@@ -140,6 +147,12 @@ int main(int argc, char** argv) {
                         exit(1);
                     }
                 } break;
+#ifdef RTP_CLOCK_CHECK
+                case args_list("ClockCheckSize"): {
+                    const auto tmp = args.pop();
+                    std::from_chars(tmp.begin(), tmp.end(), clock_check_size);
+                } break;
+#endif
                 case args_list('h'):
                     args_list.print_arg();
                     exit(0);
@@ -174,6 +187,11 @@ int main(int argc, char** argv) {
 
     auto to_duration = [](const auto t) constexpr { return std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{t * (1.0 / J2KPayloadHeader_trait::media_clock_Hz)}); };
 
+#ifdef RTP_CLOCK_CHECK
+    std::vector<std::chrono::steady_clock::time_point> debug_clock_check{clock_check_size};
+    auto debug_clock_it = debug_clock_check.begin();
+#endif
+
     std::thread analysis_thread([&] {
         size_t table_index     = 0;
         uint32_t PID           = 0;
@@ -203,6 +221,10 @@ int main(int argc, char** argv) {
 
             img_clock += to_duration(img_inc.load(std::memory_order_acquire));
             std::this_thread::sleep_until(img_clock);
+#ifdef RTP_CLOCK_CHECK
+            *debug_clock_it = std::chrono::steady_clock::now();
+            ++debug_clock_it;
+#endif
         };
         if (unlikely(is_enter)) {
             while (!analysis_stoper);
@@ -393,6 +415,27 @@ int main(int argc, char** argv) {
     printf("lost frame: %ld\n", loss_frame);
     printf("RTP packet error: %ld\n", RTP_error_count);
     printf("J2K packet error: %ld\n", J2K_error_count);
+
+#ifdef RTP_CLOCK_CHECK
+    {
+        // printf("clock result, print each value? [y/n]");
+        // char yn[16];
+        // scanf("%c", yn);
+        // bool is_print = (yn[0] == 'y' || yn[0] == 'Y');
+        bool is_print = false;
+
+        long double sum_check = 0;
+        auto pre_check        = std::chrono::duration_cast<std::chrono::microseconds>(debug_clock_check.front().time_since_epoch()).count() / 1000.0;
+        for (size_t i = 1; i < debug_clock_check.size(); ++i) {
+            auto now = std::chrono::duration_cast<std::chrono::microseconds>(debug_clock_check[i].time_since_epoch()).count() / 1000.0;
+            if (is_print) printf("%lfms\n", now - pre_check);
+            sum_check += now - pre_check;
+            pre_check = now;
+        }
+        printf("avg: %lfms\n", static_cast<double>(sum_check / (debug_clock_check.size() - 1)));
+    }
+#endif
+
     // printf("pkt_header_true: %ld\n", CodeBlock::pkt_header_true);
     // printf("pkt_header_false: %ld\n", CodeBlock::pkt_header_false);
     // printf("prob: %lf%%\n", static_cast<double>(CodeBlock::pkt_header_true) / (CodeBlock::pkt_header_true + CodeBlock::pkt_header_false));
