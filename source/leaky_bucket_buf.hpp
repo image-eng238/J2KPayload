@@ -19,7 +19,7 @@ public:
 class leaky_bucket_buf {
 public:
     static constexpr size_t BUFFER_SIZE = 1384;
-    static constexpr size_t NUM_BUFFER  = 5000;
+    static constexpr size_t NUM_BUFFER  = 10 * 1360;
     struct link_list {
         int data_size;
         uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
