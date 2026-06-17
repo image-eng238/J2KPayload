@@ -246,7 +246,7 @@ int main(int argc, char** argv) {
             printf("main header read, seq: %d\n", rtp_recv.get_last_sequence_number());
         }
 #endif
-        {
+        if (likely(!is_enter)) {
             std::unique_lock lk{img_clock_locker};
             img_clock_cond.wait(lk);
             img_clock = std::chrono::steady_clock::now();
@@ -342,6 +342,7 @@ int main(int argc, char** argv) {
 #endif
         printf("receive thread ready...\n");
         uint32_t pre_timestamp = 0;
+        uint32_t pre_TPSTAMP   = 0;
         const auto pkt_inc_r   = to_duration(rf_r);
         const auto pkt_inc_a   = to_duration(rf_a);
         receive_start          = std::chrono::steady_clock::now();
@@ -365,6 +366,11 @@ int main(int argc, char** argv) {
                     }
                     pre_timestamp = tp;
                 }
+                const auto TPS = J2KPayloadHeader_trait::get_extended_sequence_number(pkt->data);
+                if (TPS != pre_TPSTAMP + 1 && TPS && pre_TPSTAMP) {
+                    printf("lost packet: %d, overflow packet: %d\n", TPS - (pre_TPSTAMP + 1), udp.get_overflow_packet());
+                }
+                pre_TPSTAMP = TPS;
                 // メディアクロックとPTSTAMPをもとに待機時間を算出
                 packet_abs += pkt_inc_r;
                 std::this_thread::sleep_until(packet_abs);

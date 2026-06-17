@@ -70,8 +70,8 @@ public:
 
 class UDPReceiver : public UDPBase {
 public:
-    UDPReceiver() {}
-    UDPReceiver(const char* const address, const uint16_t port) {
+    UDPReceiver() : msg{nullptr, 0, &iov, 1, cmsg_buffer, cmsg_len, 0}, iov{}, cmsg_buffer{}, prev_overflow{} {}
+    UDPReceiver(const char* const address, const uint16_t port) : UDPReceiver{} {
         if (!sock_bind(address, port)) {
             exit(1);
         }
@@ -79,7 +79,7 @@ public:
     bool sock_bind(const char* const address = "127.0.0.1", const uint16_t port = 50001) {
         sock = socket(AF_INET, SOCK_DGRAM, 0);
         if (sock == -1) {
-            std::cout << "socket error" << std::endl;
+            perror("socket");
             return false;
         }
         socket_address = [&]() {
@@ -89,19 +89,45 @@ public:
             out.sin_addr.s_addr = inet_addr(address);
             return out;
         }();
-        if (bind(sock, reinterpret_cast<const sockaddr*>(&socket_address), sizeof(sockaddr_in)) == -1) {
-            std::cout << "bind error" << std::endl;
+        int val = 1;
+        if (ioctl(sock, FIONBIO, &val) == -1) {
+            perror("ioctl(FIONBIO)");
             return false;
         }
-        int val = 1;
-        ioctl(sock, FIONBIO, &val);
+
+        linger optval{1, 0};
+
+        // cmsg にオーバーフローしたデータ数の合計(uint32_t)を要求
+        if (setsockopt(sock, SOL_SOCKET, SO_RXQ_OVFL, &optval, sizeof(optval)) == -1) {
+            perror("setsockopt(SO_RXQ_OVFL)");
+            return false;
+        }
+
+        if (bind(sock, reinterpret_cast<const sockaddr*>(&socket_address), sizeof(sockaddr_in)) == -1) {
+            perror("bind");
+            return false;
+        }
+
         return true;
     }
     ssize_t receive(void* const buf_ptr, const size_t buf_size) {
-        auto output = recv(sock, buf_ptr, buf_size, 0);
-        // if (output == -1) {
-        // std::cout << "receive error, errno: " << errno << std::endl;
-        // }
+        // auto output = recv(sock, buf_ptr, buf_size, 0);
+        msg.msg_iov->iov_base = buf_ptr;
+        msg.msg_iov->iov_len  = buf_size;
+        auto output           = recvmsg(sock, &msg, 0);
+        if (output != -1) {
+            for (cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != nullptr; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+                if (cmsg->cmsg_type == SO_RXQ_OVFL) {
+                    prev_overflow = *(uint32_t*)CMSG_DATA(cmsg);
+                }
+            }
+        }
         return output;
     }
+    uint32_t get_overflow_packet() const { return prev_overflow; }
+    msghdr msg;
+    iovec iov;
+    static constexpr size_t cmsg_len = CMSG_SPACE(1);
+    uint8_t cmsg_buffer[cmsg_len];
+    uint32_t prev_overflow;
 };
