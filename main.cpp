@@ -343,6 +343,7 @@ int main(int argc, char** argv) {
         printf("receive thread ready...\n");
         uint32_t pre_timestamp = 0;
         uint32_t pre_TPSTAMP   = 0;
+        uint32_t pre_flow      = 0;
         const auto pkt_inc_r   = to_duration(rf_r);
         const auto pkt_inc_a   = to_duration(rf_a);
         receive_start          = std::chrono::steady_clock::now();
@@ -368,7 +369,11 @@ int main(int argc, char** argv) {
                 }
                 const auto TPS = J2KPayloadHeader_trait::get_extended_sequence_number(pkt->data);
                 if (TPS != pre_TPSTAMP + 1 && TPS && pre_TPSTAMP) {
-                    printf("lost packet: %d, overflow packet: %d\n", TPS - (pre_TPSTAMP + 1), udp.get_overflow_packet());
+                    const auto flow = udp.get_overflow_packet();
+                    if (pre_flow != flow) {
+                        printf("lost packet: %d, overflow packet: %d\n", TPS - (pre_TPSTAMP + 1), flow - pre_flow);
+                        pre_flow = flow;
+                    }
                 }
                 pre_TPSTAMP = TPS;
                 // メディアクロックとPTSTAMPをもとに待機時間を算出

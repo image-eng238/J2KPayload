@@ -115,16 +115,16 @@ public:
         msg.msg_iov->iov_base = buf_ptr;
         msg.msg_iov->iov_len  = buf_size;
         auto output           = recvmsg(sock, &msg, 0);
-        if (output != -1) {
-            for (cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != nullptr; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
-                if (cmsg->cmsg_type == SO_RXQ_OVFL) {
-                    prev_overflow = *(uint32_t*)CMSG_DATA(cmsg);
-                }
-            }
-        }
         return output;
     }
-    uint32_t get_overflow_packet() const { return prev_overflow; }
+    uint32_t get_overflow_packet() {
+        for (cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != nullptr; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+            if (cmsg->cmsg_type == SO_RXQ_OVFL) {
+                return *(uint32_t*)CMSG_DATA(cmsg);
+            }
+        }
+        return 0;
+    }
     msghdr msg;
     iovec iov;
     static constexpr size_t cmsg_len = CMSG_SPACE(1);
