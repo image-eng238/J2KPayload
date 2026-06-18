@@ -52,9 +52,10 @@ int main(int argc, char** argv) {
     CPU_ZERO(&affinity);
     cpu_set_t affinity_analysis;
     CPU_ZERO(&affinity_analysis);
-    double rf_r   = 0.5;
-    double rf_a   = 0.25;
-    bool is_enter = false;
+    size_t buffer_length = 1360 * 10;
+    double rf_r          = 0.5;
+    double rf_a          = 0.25;
+    bool is_enter        = false;
     enum class OutF : uint8_t {
         FPS,
         MS
@@ -73,6 +74,7 @@ int main(int argc, char** argv) {
              {'f', "frame", "The interval between frames to display default: 60"},
              {'c', "receive_affinity", "CPU affinity of the receive thread"},
              {'C', "analysis_affinity", "CPU affinity of the analysis thread"},
+             {'b', "BufferLength", "Maximum number of packets to buffer, default: 13600"},
              {0, "ReceiveFrequency", "The multiplier for the receiving thread frequency (90kHz). Fromat: \"receive:again\",default: 0.5:0.25"},
              {0, "Enter", "analysis thread continue at enter"},
              {0, "OutputFormat", "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
@@ -122,6 +124,10 @@ int main(int argc, char** argv) {
                         }
                     }
                 } break;
+                case args_list('b'): {
+                    auto tmp = args.pop();
+                    std::from_chars(tmp.begin(), tmp.end(), buffer_length).ptr == tmp.end();
+                } break;
                 case args_list("ReceiveFrequency"): {
                     auto tmp = args.pop();
                     auto cp  = tmp.find_first_of(':');
@@ -163,8 +169,10 @@ int main(int argc, char** argv) {
         }
     }
 
+    static leaky_bucket_buf::link_list packet_buffer[leaky_bucket_buf::NUM_BUFFER]{};
+
     UDPReceiver udp(addr.data(), port);
-    static leaky_bucket_buf buffer(&udp);
+    leaky_bucket_buf buffer(&udp, packet_buffer, leaky_bucket_buf::NUM_BUFFER);
     RTPReceiver rtp_recv(&buffer);
 
     std::chrono::steady_clock::time_point analysis_start;
@@ -371,8 +379,10 @@ int main(int argc, char** argv) {
                 if (TPS != pre_TPSTAMP + 1 && TPS && pre_TPSTAMP) {
                     const auto flow = udp.get_overflow_packet();
                     if (pre_flow != flow) {
-                        printf("lost packet: %d, overflow packet: %d\n", TPS - (pre_TPSTAMP + 1), flow - pre_flow);
+                        fprintf(stderr, "lost packet: %d, overflow packet: %d\n", TPS - (pre_TPSTAMP + 1), flow - pre_flow);
                         pre_flow = flow;
+                    } else {
+                        fprintf(stderr, "Loss due to transmission path, total overflow pakcet: %d\n", flow);
                     }
                 }
                 pre_TPSTAMP = TPS;

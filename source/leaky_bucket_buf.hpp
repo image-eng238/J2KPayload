@@ -32,8 +32,7 @@ public:
         AGAIN    = 0,
         RECEIVED = 1
     };
-    leaky_bucket_buf();
-    leaky_bucket_buf(UDPReceiver* const);
+    leaky_bucket_buf(UDPReceiver* const, link_list* const, size_t);
 
     constexpr void set_udp(UDPReceiver* const);
     int receive();
@@ -54,12 +53,13 @@ private:
     UDPReceiver* udp;        // receive のみからアクセス
 
     size_t current_num_data; // 双方からアクセス 同期処理を行う
-    size_t tmp_num_data;
+    size_t tmp_num_data;     // 受信スレッドで mutex の取得ができないときに受信したデータ数を記録
+    size_t noblocking_pop;   // 解析スレッドで mutex の取得ができないときに備えて取り出せるデータ数をコピー
 
     std::mutex mtx;
     std::condition_variable cond;
 
-    link_list buf_list[NUM_BUFFER];
+    link_list* buf_list;
     // 体感では link_list のメンバに配列をもたせたほうが NUM_BUFFER が小さい値でも安定する(要検証)
 public:
     // 条件式 pred(uint8_t* data) を満たすまでパケットを捨てる data はパケットデータの先頭のポインタ

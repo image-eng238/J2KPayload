@@ -7,20 +7,12 @@
 
 #define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
 
-leaky_bucket_buf::leaky_bucket_buf()
-    : next_write{buf_list}, next_pop{buf_list}, last_receive{nullptr}, udp{}, current_num_data{}, tmp_num_data{}, mtx{}, cond{}, buf_list{} {
-
-    for (size_t i = 0; i < NUM_BUFFER - 1; ++i) {
+leaky_bucket_buf::leaky_bucket_buf(UDPReceiver* const ptr, link_list* const buf, size_t len)
+    : next_write{buf}, next_pop{buf}, last_receive{nullptr}, udp{ptr}, current_num_data{}, tmp_num_data{}, noblocking_pop{}, mtx{}, cond{}, buf_list{buf} {
+    for (size_t i = 0; i < len - 1; ++i) {
         buf_list[i].next_ptr = &buf_list[i + 1];
-        // buf_list[i].data_size = 0;
-        // buf_list[i].data     = &buffer[i * BUFFER_SIZE];
     }
-    buf_list[NUM_BUFFER - 1].next_ptr = buf_list;
-    // buf_list[NUM_BUFFER - 1].data_size = 0;
-    // buf_list[NUM_BUFFER - 1].data     = &buffer[(NUM_BUFFER - 1) * BUFFER_SIZE];
-}
-leaky_bucket_buf::leaky_bucket_buf(UDPReceiver* const ptr) : leaky_bucket_buf{} {
-    set_udp(ptr);
+    buf_list[len - 1].next_ptr = buf_list;
 }
 
 constexpr void leaky_bucket_buf::set_udp(UDPReceiver* const ptr) {
@@ -64,22 +56,27 @@ int leaky_bucket_buf::receive() {
 }
 
 int leaky_bucket_buf::pop(uint8_t*& ptr) {
-    // while (current_num_data.load(std::memory_order_relaxed) <= 0) {
-    //     std::this_thread::yield();
-    // }
+    std::unique_lock lk(mtx, std::defer_lock);
+    if constexpr (true) {
+        if (noblocking_pop != 0) {
+            --noblocking_pop;
+        } else {
+            lk.lock();
+            cond.wait(lk, [this] { return current_num_data > 0; });
 
-    std::unique_lock lk(mtx);
-    cond.wait(lk, [this] { return current_num_data > 0; });
-
+            --current_num_data;
+            noblocking_pop = current_num_data;
+        }
+    } else {
+        lk.lock();
+        cond.wait(lk, [this] { return current_num_data > 0; });
+    }
     auto popping = next_pop;
     auto out     = popping->data_size;
     ptr          = popping->data;
     // popping->data_size = 0;
 
     next_pop = popping->next_ptr;
-
-    --current_num_data;
-    lk.unlock();
 
     return out;
 }
