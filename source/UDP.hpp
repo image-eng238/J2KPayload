@@ -27,6 +27,7 @@ public:
     ~UDPBase() {
         if (sock != -1) close(sock);
     }
+    auto get_sock_fd() const { return sock; }
 
 protected:
     int sock;
