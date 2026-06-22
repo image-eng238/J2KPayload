@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
                 } break;
                 case args_list('b'): {
                     auto tmp = args.pop();
-                    std::from_chars(tmp.begin(), tmp.end(), buffer_length).ptr == tmp.end();
+                    std::from_chars(tmp.begin(), tmp.end(), buffer_length);
                 } break;
                 case args_list("ReceiveFrequency"): {
                     auto tmp = args.pop();
@@ -197,7 +197,8 @@ int main(int argc, char** argv) {
 
 #ifdef RTP_CLOCK_CHECK
     std::vector<std::chrono::steady_clock::time_point> debug_clock_check{clock_check_size};
-    auto debug_clock_it = debug_clock_check.begin();
+    auto debug_clock_it           = debug_clock_check.begin();
+    const auto debug_clock_it_end = debug_clock_check.end();
 #endif
 
     std::thread analysis_thread([&] {
@@ -230,7 +231,8 @@ int main(int argc, char** argv) {
             img_clock += to_duration(img_inc.load(std::memory_order_acquire));
             std::this_thread::sleep_until(img_clock);
 #ifdef RTP_CLOCK_CHECK
-            *debug_clock_it = std::chrono::steady_clock::now();
+            if (debug_clock_it != debug_clock_it_end)
+                *debug_clock_it = std::chrono::steady_clock::now();
             ++debug_clock_it;
 #endif
         };
@@ -373,6 +375,7 @@ int main(int argc, char** argv) {
                         img_clock_cond.notify_one();
                         is_img_init = true;
                     }
+                    // img_clock_cond.notify_one();
                     pre_timestamp = tp;
                 }
                 const auto TPS = J2KPayloadHeader_trait::get_extended_sequence_number(pkt->data);

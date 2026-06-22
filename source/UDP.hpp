@@ -90,11 +90,12 @@ public:
             out.sin_addr.s_addr = inet_addr(address);
             return out;
         }();
-        int val = 1;
-        if (ioctl(sock, FIONBIO, &val) == -1) {
-            perror("ioctl(FIONBIO)");
-            return false;
-        }
+        // ブロッキングモードの指定
+        // int val = 1;
+        // if (ioctl(sock, FIONBIO, &val) == -1) {
+        //     perror("ioctl(FIONBIO)");
+        //     return false;
+        // }
 
         linger optval{1, 0};
 
