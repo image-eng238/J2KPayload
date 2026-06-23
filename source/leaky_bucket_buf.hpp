@@ -28,7 +28,8 @@ public:
     };
 
     enum {
-        FINISH   = -1,
+        FINISH   = -2,
+        SIGNAL   = -1,
         AGAIN    = 0,
         RECEIVED = 1
     };

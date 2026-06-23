@@ -29,6 +29,17 @@ int leaky_bucket_buf::receive() {
     if (writing->data_size == -1) {
         if (BRANCH_PROB(errno == EAGAIN, 1.0)) {
             return AGAIN;
+        }
+        if (errno == EINTR) {
+            std::unique_lock lk{mtx};
+            current_num_data   = 1 + tmp_num_data;
+            next_write         = writing->next_ptr;
+            last_receive       = writing;
+            writing->data_size = 1;
+            writing->data[0]   = 0;
+            lk.unlock();
+            cond.notify_one();
+            return SIGNAL;
         } else {
             perror("receive error");
             return FINISH;

@@ -40,9 +40,14 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 
 #include <pthread.h>
 
-constexpr size_t MAX_PACKET_SIZE = 1384;
+#include <csignal>
 
-int read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf);
+constexpr size_t MAX_PACKET_SIZE = 1384;
+sig_atomic_t sig_flag            = 0;
+void sig_handler(int sig_num) {
+    sig_flag = 1;
+    killpg(0, sig_num);
+}
 
 int main(int argc, char** argv) {
     std::string_view addr = "127.0.0.1";
@@ -201,6 +206,15 @@ int main(int argc, char** argv) {
     const auto debug_clock_it_end = debug_clock_check.end();
 #endif
 
+    struct sigaction sa{};
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags   = 0;
+    sa.sa_handler = sig_handler;
+    if (sigaction(SIGINT, &sa, nullptr) == -1) {
+        perror("sigaction(SIGINT)");
+        exit(1);
+    }
+
     std::thread analysis_thread([&] {
         size_t table_index     = 0;
         uint32_t PID           = 0;
@@ -247,7 +261,14 @@ int main(int argc, char** argv) {
         Tile j2k_tile;
         std::array<fast_table, ConstValue::all_precinct> j2k_packet_table{};
         {
-            while (rtp_recv.check() != RTPReceiver::MAIN_HEADER);
+            int32_t result = 0;
+            while (true) {
+                result = rtp_recv.check();
+                if (result == RTPReceiver::MAIN_HEADER) break;
+                if (result == RTPReceiver::FINISH) {
+                    return;
+                }
+            }
             avg_frame = std::chrono::steady_clock::now();
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
@@ -261,7 +282,7 @@ int main(int argc, char** argv) {
             img_clock_cond.wait(lk);
             img_clock = std::chrono::steady_clock::now();
         }
-        while (true) {
+        while (!sig_flag) {
 #ifdef DISABLE_TABLE
             MainHeader main_header;
             Tile j2k_tile;
@@ -396,6 +417,8 @@ int main(int argc, char** argv) {
                 // false: メディアクロックの 1/4 で待機
                 packet_abs += pkt_inc_a;
                 std::this_thread::sleep_until(packet_abs);
+            } else if (result == leaky_bucket_buf::SIGNAL) {
+                break;
             } else if (likely(result == leaky_bucket_buf::FINISH)) {
                 break;
             }
@@ -467,37 +490,5 @@ int main(int argc, char** argv) {
     // printf("true%% : %lf\n", static_cast<double>(J2kBuf::count_true) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
     // printf("false%%: %lf\n", static_cast<double>(J2kBuf::count_false) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
 
-    return 0;
-}
-
-int read_packet(const Precinct* const current_precinct, J2kBuf& payload_buf) {
-    // Precinct::get_number_of_subband() のメモリアクセスがボトルネック
-    // 実際には current_precinct の実体がキャッシュに乗っていないため，
-    // 一回目のアクセスに時間がかかる
-    static size_t call_count = 0;
-    call_count++;
-    if (unlikely(!payload_buf.get_bit())) { // empty packet
-        std::cout << "empty packet, call_count: " << call_count << std::endl;
-        return 1;
-    }
-
-    PrecinctSubband* current_ps;
-    const uint8_t num_subband = current_precinct->get_number_of_subband();
-    assume(num_subband <= 3);
-    for (uint8_t i = 0; i < num_subband; ++i) {
-        current_ps = current_precinct->get_psubband_ptr(i);
-#ifdef GENERATE_LOG
-        current_ps->read_packet_header(&payload_buf, current_precinct->get_resolution_level());
-#else
-        current_ps->read_packet_header(&payload_buf);
-#endif
-    }
-    payload_buf.check_FF();
-    payload_buf.r_fill();
-
-    for (uint8_t i = 0; i < num_subband; ++i) {
-        current_ps = current_precinct->get_psubband_ptr(i);
-        current_ps->get_codeblock_ptr(0)->set_data(&payload_buf);
-    }
     return 0;
 }
