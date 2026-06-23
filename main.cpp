@@ -500,8 +500,8 @@ int main(int argc, char** argv) {
     }
     printf("analysis frame: %ld\n", analysis_frame);
     printf("lost frame: %ld\n", loss_frame);
-    printf("lost packets: %ld\n", sum_lost_packet);
-    printf("packet loss rate: %lf%%\n", sum_lost_packet / (analysis_frame * 1360.0));
+    printf("lost packets: %ld/%ld\n", sum_lost_packet, analysis_frame * 1360);
+    printf("packet loss rate: %lf%%\n", (sum_lost_packet / (analysis_frame * 1360.0)) * 100);
     printf("RTP packet error: %ld\n", RTP_error_count);
     printf("J2K packet error: %ld\n", J2K_error_count);
 
