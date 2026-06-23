@@ -32,7 +32,7 @@ int leaky_bucket_buf::receive() {
         }
         if (errno == EINTR) {
             std::unique_lock lk{mtx};
-            current_num_data   = 1 + tmp_num_data;
+            current_num_data += 1 + tmp_num_data;
             next_write         = writing->next_ptr;
             last_receive       = writing;
             writing->data_size = 1;
@@ -75,20 +75,22 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
             lk.lock();
             cond.wait(lk, [this] { return current_num_data > 0; });
 
-            --current_num_data;
-            noblocking_pop = current_num_data;
+            noblocking_pop   = current_num_data - 1;
+            current_num_data = 0;
         }
     } else {
         lk.lock();
         cond.wait(lk, [this] { return current_num_data > 0; });
+        --current_num_data;
     }
-    auto popping = next_pop;
-    auto out     = popping->data_size;
-    ptr          = popping->data;
-    // popping->data_size = 0;
+    auto popping       = next_pop;
+    auto out           = popping->data_size;
+    ptr                = popping->data;
+    popping->data_size = 0;
 
     next_pop = popping->next_ptr;
 
+    assert(out != 0);
     return out;
 }
 

@@ -46,7 +46,6 @@ constexpr size_t MAX_PACKET_SIZE = 1384;
 sig_atomic_t sig_flag            = 0;
 void sig_handler(int sig_num) {
     sig_flag = 1;
-    killpg(0, sig_num);
 }
 
 int main(int argc, char** argv) {
@@ -180,16 +179,16 @@ int main(int argc, char** argv) {
     leaky_bucket_buf buffer(&udp, packet_buffer, leaky_bucket_buf::NUM_BUFFER);
     RTPReceiver rtp_recv(&buffer);
 
-    std::chrono::steady_clock::time_point analysis_start;
-    std::chrono::steady_clock::time_point analysis_finish;
-    std::chrono::steady_clock::time_point receive_start;
-    std::chrono::steady_clock::time_point receive_finish;
     std::chrono::steady_clock::time_point avg_frame;
-    size_t analysis_frame        = 0;
-    size_t loss_frame            = 0;
-    uint32_t frame_lost_precinct = 0;
-    size_t RTP_error_count       = 0;
-    size_t J2K_error_count       = 0;
+    size_t analysis_frame          = 0;
+    size_t loss_frame              = 0;
+    uint32_t frame_lost_precinct   = 0;
+    size_t RTP_error_count         = 0;
+    size_t J2K_error_count         = 0;
+    long double sum_avg            = 0;
+    size_t sum_lost_packet         = 0;
+    double analysis_operating_time = 0;
+    double receive_operating_time  = 0;
 
     std::atomic_bool analysis_stoper = false;
 
@@ -215,7 +214,21 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
+    sigset_t new_sig_set;
+    sigemptyset(&new_sig_set);
+    sigaddset(&new_sig_set, SIGINT);
+    if (sigprocmask(SIG_BLOCK, &new_sig_set, nullptr) == -1) {
+        perror("sigprocmask");
+        exit(1);
+    }
+
+    /***************************************************************************************************/
+    /* analysis_thread                                                                                 */
+    /***************************************************************************************************/
+
     std::thread analysis_thread([&] {
+        std::chrono::steady_clock::time_point analysis_start;
+        std::chrono::steady_clock::time_point analysis_finish;
         size_t table_index     = 0;
         uint32_t PID           = 0;
         uint32_t last_sequence = 0;
@@ -230,17 +243,6 @@ int main(int argc, char** argv) {
                 frame_lost_precinct = 0;
             }
             ++analysis_frame;
-            if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                auto now = std::chrono::steady_clock::now();
-                auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-                if (output_format == OutF::FPS) {
-                    const auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
-                    printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
-                } else if (output_format == OutF::MS) {
-                    printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, (static_cast<float>(avg.count()) / out_flame) / 1000);
-                }
-                avg_frame = now;
-            }
 
             img_clock += to_duration(img_inc.load(std::memory_order_acquire));
             std::this_thread::sleep_until(img_clock);
@@ -249,6 +251,20 @@ int main(int argc, char** argv) {
                 *debug_clock_it = std::chrono::steady_clock::now();
             ++debug_clock_it;
 #endif
+            if (out_flame != 0 && analysis_frame % out_flame == 0) {
+                auto now = std::chrono::steady_clock::now();
+                auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
+                if (output_format == OutF::FPS) {
+                    const auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
+                    sum_avg += avg_fps;
+                    printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
+                } else if (output_format == OutF::MS) {
+                    const auto avg_ms = (static_cast<float>(avg.count()) / out_flame) / 1000;
+                    sum_avg += avg_ms;
+                    printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, avg_ms);
+                }
+                avg_frame = now;
+            }
         };
         if (unlikely(is_enter)) {
             while (!analysis_stoper);
@@ -269,7 +285,7 @@ int main(int argc, char** argv) {
                     return;
                 }
             }
-            avg_frame = std::chrono::steady_clock::now();
+            // avg_frame = std::chrono::steady_clock::now();
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
@@ -281,6 +297,7 @@ int main(int argc, char** argv) {
             std::unique_lock lk{img_clock_locker};
             img_clock_cond.wait(lk);
             img_clock = std::chrono::steady_clock::now();
+            avg_frame = img_clock;
         }
         while (!sig_flag) {
 #ifdef DISABLE_TABLE
@@ -340,6 +357,7 @@ int main(int argc, char** argv) {
                             "  RTP error analysis_frame: %ld, lost_packet: %d, discarded_packet: %d, lost_precinct: %ld\n",
                             analysis_frame, rtp_recv.get_lost_packet(), rtp_recv.get_last_sequence_number() - last_sequence, loss_precinct
                         );
+                        sum_lost_packet += rtp_recv.get_lost_packet();
                     } else {
 #ifdef DISABLE_TABLE
                         goto long_break;
@@ -362,25 +380,41 @@ int main(int argc, char** argv) {
 #ifdef DISABLE_TABLE
     long_break:
 #endif
-        analysis_finish = std::chrono::steady_clock::now();
-        printf("analysis finish: %ld\n", (analysis_finish - analysis_start).count());
+        analysis_finish         = std::chrono::steady_clock::now();
+        analysis_operating_time = std::chrono::duration_cast<std::chrono::milliseconds>(analysis_finish - analysis_start).count() / 1000.0;
+        printf("analysis finish\n");
     });
+
+    /***************************************************************************************************/
+    /* receive_thread                                                                                  */
+    /***************************************************************************************************/
 
     std::thread receive_thread([&]() {
 #ifdef GENERATE_RECEIVE_PROBABILITY
         size_t count_receive = 0;
         size_t count_again   = 0;
 #endif
-        printf("receive thread ready...\n");
+        sigset_t new_sig_set;
+        sigemptyset(&new_sig_set);
+        sigaddset(&new_sig_set, SIGINT);
+        if (pthread_sigmask(SIG_UNBLOCK, &new_sig_set, nullptr) == -1) {
+            perror("pthread_sigmask");
+            exit(1);
+        }
+
+        std::chrono::steady_clock::time_point receive_start;
+        std::chrono::steady_clock::time_point receive_finish;
         uint32_t pre_timestamp = 0;
         uint32_t pre_TPSTAMP   = 0;
         uint32_t pre_flow      = 0;
         const auto pkt_inc_r   = to_duration(rf_r);
         const auto pkt_inc_a   = to_duration(rf_a);
-        receive_start          = std::chrono::steady_clock::now();
-        auto packet_abs        = receive_start;
-        bool is_img_init       = false;
-        while (true) {
+
+        printf("receive thread ready...\n");
+        receive_start    = std::chrono::steady_clock::now();
+        auto packet_abs  = receive_start;
+        bool is_img_init = false;
+        while (!sig_flag) {
             const auto result = buffer.receive();
 #ifdef GENERATE_RECEIVE_PROBABILITY
             if (result == leaky_bucket_buf::AGAIN) ++count_again;
@@ -423,8 +457,10 @@ int main(int argc, char** argv) {
                 break;
             }
         }
-        receive_finish = std::chrono::steady_clock::now();
-        printf("receive finish: %ld\n", (receive_finish - receive_start).count());
+        receive_finish         = std::chrono::steady_clock::now();
+        receive_operating_time = std::chrono::duration_cast<std::chrono::milliseconds>(receive_finish - receive_start).count() / 1000.0;
+        if (sig_flag) putc('\n', stdout);
+        printf("receive finish\n");
 #ifdef GENERATE_RECEIVE_PROBABILITY
         printf("receive: %ld\n", count_receive);
         printf("again:   %ld\n", count_again);
@@ -454,12 +490,18 @@ int main(int argc, char** argv) {
     analysis_thread.join();
     receive_thread.join();
 
-    auto diff = ((analysis_finish - analysis_start) - (receive_finish - receive_start)).count();
-    if (diff < 0) diff *= -1;
-
-    printf("finish diff: %ld\n", diff);
+    printf("=============================================\n");
+    printf("analysis thread's operating time: %lfs\n", analysis_operating_time);
+    printf("receive thread's operating time: %lfs\n", receive_operating_time);
+    if (output_format == OutF::FPS) {
+        printf("average fps: %Lffps\n", sum_avg / (analysis_frame / out_flame));
+    } else {
+        printf("average fps: %Lfms\n", sum_avg / (analysis_frame / out_flame));
+    }
     printf("analysis frame: %ld\n", analysis_frame);
     printf("lost frame: %ld\n", loss_frame);
+    printf("lost packets: %ld\n", sum_lost_packet);
+    printf("packet loss rate: %lf%%\n", sum_lost_packet / (analysis_frame * 1360.0));
     printf("RTP packet error: %ld\n", RTP_error_count);
     printf("J2K packet error: %ld\n", J2K_error_count);
 
@@ -482,13 +524,6 @@ int main(int argc, char** argv) {
         printf("avg: %lfms\n", static_cast<double>(sum_check / (debug_clock_check.size() - 1)));
     }
 #endif
-
-    // printf("pkt_header_true: %ld\n", CodeBlock::pkt_header_true);
-    // printf("pkt_header_false: %ld\n", CodeBlock::pkt_header_false);
-    // printf("prob: %lf%%\n", static_cast<double>(CodeBlock::pkt_header_true) / (CodeBlock::pkt_header_true + CodeBlock::pkt_header_false));
-    // printf("true : %ld\nfalse: %ld\n", J2kBuf::count_true, J2kBuf::count_false);
-    // printf("true%% : %lf\n", static_cast<double>(J2kBuf::count_true) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
-    // printf("false%%: %lf\n", static_cast<double>(J2kBuf::count_false) / static_cast<double>(J2kBuf::count_true + J2kBuf::count_false));
 
     return 0;
 }
