@@ -366,12 +366,13 @@ int main(int argc, char** argv) {
                     }
 
                 } catch (buffer_leak& e) {
-                    buffer.clear();
-                    auto dest_packet = buffer.dest(
+                    // buffer.clear();
+                    const auto in_buf = buffer.get_num_data();
+                    auto dest_packet  = buffer.dest(
                         [](const uint8_t* const data) -> bool { return static_cast<bool>(J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)); }
                     );
                     fputs(e.what(), stderr);
-                    fprintf(stderr, ": buffer leak error analysis_frame: %ld, discarded packsts: %ld\n", analysis_frame, dest_packet);
+                    fprintf(stderr, ": buffer leak error analysis_frame: %ld, discarded packsts: %ld, in buf: %ld\n", analysis_frame, dest_packet, in_buf);
                     ++loss_frame;
                     ++J2K_error_count;
                     table_index = 0;
