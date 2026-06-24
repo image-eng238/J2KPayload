@@ -31,6 +31,8 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 
 #include "argument.hpp"
 
+#include "wrap_number.hpp"
+
 #include <vector>
 #include <string_view>
 #include <charconv>
