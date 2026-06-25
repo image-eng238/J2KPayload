@@ -40,6 +40,7 @@ add_executable(j2kpay main.cpp)
 target_link_libraries(j2kpay CodeStream Decoding LeakyBucket)
 
 add_executable(RTPsender RTPsender.cpp)
+add_executable(RTPsender2 RTPsender2.cpp)
 
 add_executable(stop_j2kpay stop_j2kpay.cpp)
 
