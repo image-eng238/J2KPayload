@@ -32,6 +32,27 @@ public:
         value = n;
         return *this;
     }
+    constexpr value_type operator++() {
+        ++value;
+        return get();
+    }
+    constexpr value_type operator++(int) {
+        const auto tmp = get();
+        value++;
+        return tmp;
+    }
+    constexpr value_type operator--() {
+        --value;
+        return get();
+    }
+    constexpr value_type operator--(int) {
+        const auto tmp = get();
+        value--;
+        return tmp;
+    }
+    constexpr operator value_type() {
+        return get();
+    }
 
     constexpr bool is_overflow() const { return value > Max; }
     constexpr value_type get() const { return value & Max; }
