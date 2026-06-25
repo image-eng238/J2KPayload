@@ -31,8 +31,6 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 
 #include "argument.hpp"
 
-#include "wrap_number.hpp"
-
 #include <vector>
 #include <string_view>
 #include <charconv>
@@ -281,7 +279,7 @@ int main(int argc, char** argv) {
         {
             int32_t result = 0;
             while (true) {
-                result = rtp_recv.check();
+                result = rtp_recv.first_check();
                 if (result == RTPReceiver::MAIN_HEADER) break;
                 if (result == RTPReceiver::FINISH) {
                     return;

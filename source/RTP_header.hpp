@@ -13,6 +13,7 @@
 #include "buffer_pool.hpp"
 #include "leaky_bucket_buf.hpp"
 #include "opt_macro.hpp"
+#include "wrap_number.hpp"
 
 namespace RTPHeader_trait {
     inline constexpr uint8_t length = 12;
@@ -62,8 +63,9 @@ private:
     const uint8_t* pointer;
 };
 namespace J2KPayloadHeader_trait {
-    constexpr uint8_t length        = 8;
-    constexpr size_t media_clock_Hz = 90'000;
+    constexpr uint8_t length           = 8;
+    constexpr size_t media_clock_Hz    = 90'000;
+    constexpr uint32_t ex_sequence_max = 0xFFFFFF;
     inline constexpr uint8_t get_header_length() { return length; }
     inline constexpr uint8_t get_MH(const uint8_t* const pointer) { return (pointer[0] & 0xC0) >> 6; }                    // Codestream Main Header Presence: 2 bits
     inline constexpr uint8_t get_TP(const uint8_t* const pointer) { return pointer[0] & 0x38; }                           // Image Type: 3 bits
@@ -173,6 +175,12 @@ private:
     static constexpr uint8_t length = 8;
 };
 
+class exsequence_t : public range_wrap_t<uint32_t, J2KPayloadHeader_trait::ex_sequence_max, 0> {
+public:
+    constexpr exsequence_t() : range_wrap_t<uint32_t, J2KPayloadHeader_trait::ex_sequence_max, 0>{} {}
+    constexpr exsequence_t(uint32_t n) : range_wrap_t<uint32_t, J2KPayloadHeader_trait::ex_sequence_max, 0>{n} {}
+};
+
 class RTPReceiver {
 
 public:
@@ -184,6 +192,29 @@ public:
         MAIN_HEADER = 2,
         FINISH      = 3,
     };
+
+    int32_t first_check() {
+        using namespace RTPHeader_trait;
+        using namespace J2KPayloadHeader_trait;
+        const auto hl = RTPHeader_trait::get_header_length();
+
+        while (true) {
+            auto& data = packets[0].data;
+            auto& len  = packets[0].len;
+
+            len = buffer->pop(data);
+            if (unlikely(len == 1 && RTPHeader_trait::get_V(data) != 0b10)) return this->FINISH;
+
+            const auto sequence = get_extended_sequence_number(data);
+            pre_sequence_number = sequence;
+
+            if (likely(get_MH(data + hl))) { // メインヘッダ出現
+                assert(num_packets == 1);
+                cache = {};
+                return this->MAIN_HEADER;
+            }
+        }
+    }
 
     int32_t check() {
         using namespace RTPHeader_trait;
@@ -209,7 +240,7 @@ public:
             const auto pre_sequence = pre_sequence_number;
             pre_sequence_number     = sequence;
 
-            if (likely(sequence == pre_sequence + 1 || pre_sequence == 0 || sequence == 0)) {
+            if (likely((sequence == pre_sequence + 1) || (pre_sequence == 0 && sequence == 1) || (pre_sequence == ex_sequence_max || sequence == 0))) {
                 if (unlikely(get_MH(data + hl))) { // メインヘッダ出現
                     assert(num_packets == 1);
                     cache = {};
@@ -223,8 +254,13 @@ public:
                     return this->SUCCESS;
                 }
             } else {
+                printf("pre: %d, seq: %d\n", pre_sequence, sequence);
                 // パケットロス発生 次の再同期ポイントまでパケットを破棄
-                num_lost_packet = sequence - (pre_sequence + 1);
+                if (sequence == 0) {
+                    num_lost_packet = ex_sequence_max - pre_sequence;
+                } else {
+                    num_lost_packet = sequence - (pre_sequence + 1);
+                }
                 while (true) {
                     len = buffer->pop(data);
                     if (!get_MH(data + hl) && get_body_ORDB(data + hl)) {

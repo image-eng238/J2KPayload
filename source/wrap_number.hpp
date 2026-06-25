@@ -25,32 +25,32 @@ public:
     static_assert(minimum_value_v<value_type> <= Min);
     static_assert(is_pow2_v<Max + 1>);
 
-    constexpr range_wrap_t() = default;
+    constexpr range_wrap_t() : value{} {};
     constexpr range_wrap_t(value_type n) : value{n} {}
 
     constexpr range_wrap_t& operator=(value_type n) {
         value = n;
         return *this;
     }
-    constexpr value_type operator++() {
+    constexpr range_wrap_t& operator++() {
         ++value;
-        return get();
+        return *this;
     }
-    constexpr value_type operator++(int) {
-        const auto tmp = get();
+    constexpr range_wrap_t operator++(int) {
+        const auto tmp = *this;
         value++;
         return tmp;
     }
-    constexpr value_type operator--() {
+    constexpr range_wrap_t& operator--() {
         --value;
-        return get();
+        return *this;
     }
-    constexpr value_type operator--(int) {
-        const auto tmp = get();
+    constexpr range_wrap_t operator--(int) {
+        const auto tmp = *this;
         value--;
         return tmp;
     }
-    constexpr operator value_type() {
+    constexpr explicit operator value_type() {
         return get();
     }
 
@@ -61,6 +61,6 @@ public:
     constexpr void set(value_type n) { value = n; }
     constexpr void wraparound() { value = get(); }
 
-private:
+protected:
     value_type value;
 };
