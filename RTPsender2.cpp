@@ -44,10 +44,79 @@ e: exit, 終了
 #include <memory>
 #include <filesystem>
 #include <cstdio>
+#include <vector>
+
+template <typename T, typename L = std::size_t>
+struct pointer_with_length {
+    using value_type             = T;
+    using pointer                = value_type*;
+    using const_pointer          = const value_type*;
+    using reference              = value_type&;
+    using const_reference        = const value_type&;
+    using iterator               = value_type*;
+    using const_iterator         = const value_type*;
+    using size_type              = L;
+    using difference_type        = std::ptrdiff_t;
+    using reverse_iterator       = std::reverse_iterator<iterator>;
+    using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+    pointer ptr;
+    size_type len;
+
+    constexpr reference at(size_type n) {
+        if (n >= len) {
+            throw std::out_of_range{"pointer_with_lengh::at: n"};
+        }
+        return ptr[n];
+    }
+    constexpr const_reference at(size_type n) const {
+        if (n >= len) {
+            throw std::out_of_range{"pointer_with_lengh::at: n"};
+        }
+        return ptr[n];
+    }
+
+    constexpr reference operator[](size_type n) noexcept { return ptr[n]; }
+    constexpr const_reference operator[](size_type n) const noexcept { return ptr[n]; }
+
+    constexpr reference front() noexcept { return ptr[static_cast<size_type>(0)]; }
+    constexpr const_reference front() const noexcept { return ptr[static_cast<size_type>(0)]; }
+
+    constexpr reference back() noexcept { return ptr[len - 1]; }
+    constexpr const_reference back() const noexcept { return ptr[len - 1]; }
+
+    constexpr pointer data() noexcept { return static_cast<pointer>(ptr); }
+    constexpr const_pointer data() const noexcept { return static_cast<const_pointer>(ptr); }
+
+    constexpr iterator begin() noexcept { return iterator(data()); }
+    constexpr const_iterator begin() const noexcept { return const_iterator(data()); }
+
+    constexpr iterator end() noexcept { return iterator(data() + len); }
+    constexpr const_iterator end() const noexcept { return const_iterator(data() + len); }
+
+    constexpr reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
+    constexpr const_reverse_iterator rbegin() const noexcept { return const_reverse_iterator(end()); }
+
+    constexpr reverse_iterator rend() noexcept { return reverse_iterator(begin()); }
+    constexpr const_reverse_iterator rend() const noexcept { const_reverse_iterator(begin()); }
+
+    constexpr const_iterator cbegin() const noexcept { return const_iterator(data()); }
+
+    constexpr const_iterator cend() const noexcept { return const_iterator(data() + len); }
+
+    constexpr const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(end()); }
+
+    constexpr const_reverse_iterator crend() const noexcept { return const_reverse_iterator(begin()); }
+
+    constexpr size_type size() const noexcept { return len; }
+    constexpr size_type max_size() const noexcept { return len; }
+    constexpr bool empty() const noexcept { return size() == 0; }
+};
+using packet_t = pointer_with_length<uint8_t>;
 
 class RTP_file {
 public:
-    RTP_file() : codestream{}, siz{}, pos{} {};
+    RTP_file() : codestream{}, packets{}, siz{} {};
     RTP_file(const char* file_path) : RTP_file{} {
         if (!load(file_path)) {
             fprintf(stderr, "can`t load file: '%s'\n", file_path);
@@ -66,45 +135,53 @@ public:
         if (s != siz) {
             return false;
         }
+
+        const size_t hd = 4;
+        for (uintmax_t i = 0; i != siz;) {
+            uint8_t* const pktdata = codestream.get() + i;
+            if (pktdata[0] != 0xFF || pktdata[1] != 0xFF) {
+                return false;
+            }
+            const size_t pktsiz = (pktdata[2] << 8) | pktdata[3];
+            packets.push_back(packet_t{pktdata + hd, pktsiz});
+            i += pktsiz + hd;
+        }
         return true;
     }
-    size_t get_pkt(uint8_t*& ptr) {
-        const size_t hd  = 4;
-        uint8_t* pktdata = codestream.get() + pos;
-        if (pktdata[0] == 0xFF && pktdata[1] == 0xFF) {
-            const size_t pktsiz = (pktdata[2] << 8) | (pktdata[3]);
-
-            ptr = pktdata + hd;
-            pos += pktsiz + hd;
-            return pktsiz;
-        } else if (pktdata[0] == 0 && pktdata[1] == 0) {
-            pktdata = nullptr;
-            return 0;
-        }
-        fprintf(stderr, "file format error\n");
-        exit(1);
-    }
-    void restart() { pos = 0; }
-    bool EOC() const { return siz == pos; }
+    auto get_pkt(size_t i) const { return packets[i]; }
+    auto& front() { return packets.front(); }
+    auto& back() { return packets.back(); }
+    auto num_packet() const { return packets.size(); }
 
 private:
     std::unique_ptr<uint8_t[]> codestream;
+    std::vector<packet_t> packets;
     uintmax_t siz;
-    size_t pos;
 };
 
 class cli_parser {
 public:
-    cli_parser() : input{}, opt_number{}, opt_character{}, is_active{false} {}
+    cli_parser() : ignore_count{}, input{}, opt_number{}, opt_character{}, is_active{false} {}
     cli_parser(bool active) : cli_parser{} { is_active = active; }
 
-    bool get() {
+    bool read_line() {
         if (!is_active) return false;
+
+        if (ignore_count != 0) {
+            --ignore_count;
+            return false;
+        }
+
         printf("> ");
         int c = 0;
         input.clear();
         while ((c = getchar()) != '\n') {
             input.push_back(c);
+        }
+        if (input.empty()) {
+            opt_character = 's';
+            opt_number    = 1;
+            return true;
         }
 
         while (true) {
@@ -114,8 +191,12 @@ public:
                 if (numpos == 0) {
                     opt_character = 's';
                 }
-                std::string_view str{input.data() + numpos};
-                std::stoi(std::string{str});
+                if (numpos != std::string::npos) {
+                    std::string_view str{input.data() + numpos};
+                    opt_number = std::stoi(std::string{str});
+                } else {
+                    opt_number = 1;
+                }
                 return true;
             } catch (std::runtime_error& e) {
                 std::cerr << e.what();
@@ -126,17 +207,82 @@ public:
         }
     }
 
+    void set_ignore(size_t n) { ignore_count = n - 1; }
+
+    int optn() const { return opt_number; }
+    char optc() const { return opt_character; }
+    bool active() const { return is_active; }
+
 private:
+    size_t ignore_count;
     std::string input;
     int opt_number;
     char opt_character;
     bool is_active;
 };
 
-class packet_sender {
+class packet_os {
+public:
+    packet_os() : tp{}, base_tp{}, exseq{}, base_exseq{}, ptp{}, base_ptp{} {};
+    packet_os(const packet_t& pkt) : packet_os{} { set_base(pkt); }
+
+    void set_base(const packet_t& pkt) {
+        tp = base_tp = RTPHeader_trait::get_timestamp(pkt.data());
+        exseq = base_exseq = J2KPayloadHeader_trait::get_extended_sequence_number(pkt.data());
+        ptp = base_ptp = J2KPayloadHeader_trait::get_PTSTAMP(pkt.data() + RTPHeader_trait::length);
+    }
+
+    void advance_tp(packet_t& pkt, uint32_t n) {
+        RTPHeader_trait::set_timestamp(pkt.data(), tp);
+        if (RTPHeader_trait::get_M(pkt.data())) {
+            tp = tp.get() + n;
+        }
+    }
+    void advance_seq(packet_t& pkt) { J2KPayloadHeader_trait::set_extended_sequence_number(pkt.data(), exseq++); }
+    void advance_ptp(packet_t& pkt, uint16_t n) {
+        J2KPayloadHeader_trait::set_PTSTAMP(pkt.data() + RTPHeader_trait::length, ptp);
+        ptp = ptp.get() + n;
+    }
+
+    void set_tp(uint32_t n) { tp = n; }
+    void set_exseq(uint32_t n) { exseq = n; }
+    void set_ptp(uint32_t n) { ptp = n; }
+
+private:
+    rtptimestamp_t tp;
+    uint32_t base_tp;
+    exsequence_t exseq;
+    uint32_t base_exseq;
+    j2kptstamp_t ptp;
+    uint16_t base_ptp;
 };
 
-class packet_os {
+class packet_sender {
+public:
+    packet_sender(std::string_view addr, uint16_t port) : udp{addr.data(), port}, send_call{}, ignore_count{} {}
+
+    bool send(const packet_t& pkt) {
+        ++send_call;
+        if (ignore_count != 0) {
+            --ignore_count;
+            return true;
+        }
+        auto r = udp.send(pkt.ptr, pkt.len);
+        if (r == -1) {
+            perror("sendto");
+            return false;
+        }
+        return true;
+    }
+
+    void set_ignore(size_t n) { ignore_count = n; }
+
+    size_t get_call() const { return send_call; }
+
+private:
+    UDPSender udp;
+    size_t send_call;
+    size_t ignore_count;
 };
 
 int main(int argc, char** argv) {
@@ -209,17 +355,59 @@ int main(int argc, char** argv) {
 
     RTP_file rtpfile{rtp_path.data()};
     cli_parser cli{is_enter_opt};
+    packet_os pktos{rtpfile.front()};
+    packet_sender udp{addr, port};
 
-    UDPSender udp{addr.data(), port};
+    packet_t pkt{};
+    for (size_t i = 0; i < number_of_loop; ++i) {
+        for (size_t p = 0; p < rtpfile.num_packet(); ++p) {
 
-    uint8_t* data_ptr = nullptr;
-    size_t data_siz   = 0;
+            pkt = rtpfile.get_pkt(p);
+            if (cli.read_line()) {
+                switch (auto c = cli.optc(); c) {
+                    case 's':
+                        cli.set_ignore(cli.optn());
+                        break;
+                    case 'l':
+                        cli.set_ignore(cli.optn());
+                        udp.set_ignore(cli.optn());
+                        break;
+                    case 'c':
+                        break;
+                    case 'S':
+                        break;
+                    case 'r': {
+                        size_t cr;
+                        for (cr = 0;
+                             !J2KPayloadHeader_trait::get_body_ORDB(rtpfile.get_pkt(p + cr).data() + RTPHeader_trait::length);
+                             ++cr);
+                        cli.set_ignore(1 + cr);
+                        udp.set_ignore(1 + cr);
+                    } break;
+                    case 'E': {
+                        size_t ce;
+                        for (ce = 0;
+                             !RTPHeader_trait::get_M(rtpfile.get_pkt(p + ce).data());
+                             ++ce);
+                        cli.set_ignore(1 + ce);
+                        udp.set_ignore(1 + ce);
+                    } break;
+                    case 'e':
+                        goto EndOfLoop;
+                    default:
+                        break;
+                }
+            }
 
-    for (size_t i = 0; i < number_of_loop + 3; ++i) {
-        if (cli.get()) {
-        } else {
+            pktos.advance_tp(pkt, 1500);
+            pktos.advance_seq(pkt);
+            if (!udp.send(pkt)) {
+                fprintf(stderr, "send error\n");
+                exit(1);
+            }
         }
     }
+EndOfLoop:
 
     return 0;
 }
