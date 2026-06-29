@@ -15,10 +15,10 @@ format: <command> <number>
 <number> required
 s: send，パケットを送信
 l: loss, パケットを破棄
-c: change, シーケンス番号を変更
+c: change, シーケンス番号を変更，送信をしない
 
 <number> unnecessary
-S: Show, 次に送るパケットのデータを確認
+S: Show, 次に送るパケットのデータを確認，送信をしない
 r: rsync, 次の再同期ポイントまで送信
 E: EOC, EOCが出現するまで送信
 e: exit, 終了
@@ -245,8 +245,11 @@ public:
     }
 
     void set_tp(uint32_t n) { tp = n; }
+    void write_tp(packet_t& pkt) { RTPHeader_trait::set_timestamp(pkt.data(), tp); }
     void set_exseq(uint32_t n) { exseq = n; }
+    void write_exseq(packet_t& pkt) { J2KPayloadHeader_trait::set_extended_sequence_number(pkt.data(), exseq); }
     void set_ptp(uint32_t n) { ptp = n; }
+    void write_ptp(packet_t& pkt) { J2KPayloadHeader_trait::set_PTSTAMP(pkt.data() + RTPHeader_trait::length, ptp); }
 
 private:
     rtptimestamp_t tp;
@@ -360,23 +363,42 @@ int main(int argc, char** argv) {
 
     packet_t pkt{};
     for (size_t i = 0; i < number_of_loop; ++i) {
-        for (size_t p = 0; p < rtpfile.num_packet(); ++p) {
-
+        for (size_t p = 0; p < rtpfile.num_packet();) {
             pkt = rtpfile.get_pkt(p);
             if (cli.read_line()) {
                 switch (auto c = cli.optc(); c) {
-                    case 's':
+                    case 's': // send
                         cli.set_ignore(cli.optn());
                         break;
-                    case 'l':
+                    case 'l': // loss
                         cli.set_ignore(cli.optn());
                         udp.set_ignore(cli.optn());
                         break;
-                    case 'c':
-                        break;
-                    case 'S':
-                        break;
-                    case 'r': {
+                    case 'c': // change
+                        pktos.set_exseq(cli.optn());
+                        continue;
+                    case 'S': { // Show
+                        pktos.write_tp(pkt);
+                        pktos.write_exseq(pkt);
+                        pktos.write_ptp(pkt);
+                        std::string_view pager = getenv("PAGER");
+                        if (pager.empty()) {
+                            pager = "less";
+                        }
+                        FILE* fp = popen(pager.data(), "w");
+                        if (fp == nullptr) {
+                            perror("popen");
+                            exit(1);
+                        }
+                        RTPHeader_trait::print_info(fp, pkt.data());
+                        J2KPayloadHeader_trait::print_info(fp, pkt.data());
+                        if (pclose(fp) == -1) {
+                            perror("pclose");
+                            exit(1);
+                        }
+                        continue;
+                    }
+                    case 'r': { // rsync
                         size_t cr;
                         for (cr = 0;
                              !J2KPayloadHeader_trait::get_body_ORDB(rtpfile.get_pkt(p + cr).data() + RTPHeader_trait::length);
@@ -384,7 +406,7 @@ int main(int argc, char** argv) {
                         cli.set_ignore(1 + cr);
                         udp.set_ignore(1 + cr);
                     } break;
-                    case 'E': {
+                    case 'E': { // EOC
                         size_t ce;
                         for (ce = 0;
                              !RTPHeader_trait::get_M(rtpfile.get_pkt(p + ce).data());
@@ -392,7 +414,7 @@ int main(int argc, char** argv) {
                         cli.set_ignore(1 + ce);
                         udp.set_ignore(1 + ce);
                     } break;
-                    case 'e':
+                    case 'e': // exit
                         goto EndOfLoop;
                     default:
                         break;
@@ -405,6 +427,7 @@ int main(int argc, char** argv) {
                 fprintf(stderr, "send error\n");
                 exit(1);
             }
+            ++p;
         }
     }
 EndOfLoop:
