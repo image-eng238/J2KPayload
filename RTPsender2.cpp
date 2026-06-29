@@ -17,10 +17,10 @@ s: send，パケットを送信
 l: loss, パケットを破棄
 c: change, シーケンス番号を変更，送信をしない
 S: Show, 次に送るパケットのデータを確認，送信をしない
-
-<number> unnecessary
 r: rsync, 次の再同期ポイントまで送信
 e: EOC, EOCが出現するまで送信
+
+<number> unnecessary
 q: quit, 終了
 */
 
@@ -268,30 +268,60 @@ private:
 
 class packet_sender {
 public:
-    packet_sender(std::string_view addr, uint16_t port) : udp{addr.data(), port}, send_call{}, ignore_count{} {}
+    packet_sender(std::string_view addr, uint16_t port)
+        : udp{addr.data(), port}, send_call{}, ignore_count{}, sent_frame{}, out_frame{}, sum_avg{}, adv_sleep_v{}, sleep_v{} {}
 
     bool send(const packet_t& pkt) {
         ++send_call;
         if (ignore_count != 0) {
             --ignore_count;
-            return true;
+        } else {
+            if (udp.send(pkt.ptr, pkt.len) == -1) {
+                perror("sendto");
+                return false;
+            }
         }
-        auto r = udp.send(pkt.ptr, pkt.len);
-        if (r == -1) {
-            perror("sendto");
-            return false;
+        if (RTPHeader_trait::get_M(pkt.data())) {
+            ++sent_frame;
+            std::this_thread::sleep_until(sleep_v += adv_sleep_v);
+            if (sent_frame % out_frame == 0) {
+                const auto now_time = std::chrono::steady_clock::now();
+                const auto ms       = std::chrono::duration_cast<std::chrono::microseconds>(now_time - prev_time);
+                const auto fps      = (1 / (static_cast<float>(ms.count()) / out_frame)) * 1000000;
+                sum_avg += fps;
+                printf("sent_frame: %ld, avg: %.6ffps\n", sent_frame, fps);
+                prev_time = now_time;
+            }
         }
         return true;
     }
 
     void set_ignore(size_t n) { ignore_count = n; }
+    void set_clock(size_t t) {
+        adv_sleep_v = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(static_cast<double>(t) / J2KPayloadHeader_trait::media_clock_Hz)
+        );
+        out_frame = static_cast<size_t>(J2KPayloadHeader_trait::media_clock_Hz / static_cast<double>(t) + 0.5);
+        prev_time = sleep_v = std::chrono::steady_clock::now();
+    }
+    void set_sleep_v() { prev_time = sleep_v = std::chrono::steady_clock::now(); }
 
     size_t get_call() const { return send_call; }
+
+    void print_result() {
+        printf("average fps: %lffps\n", sum_avg / (sent_frame / out_frame));
+    }
 
 private:
     UDPSender udp;
     size_t send_call;
     size_t ignore_count;
+    size_t sent_frame;
+    size_t out_frame;
+    double sum_avg;
+    std::chrono::steady_clock::duration adv_sleep_v;
+    std::chrono::steady_clock::time_point sleep_v;
+    std::chrono::steady_clock::time_point prev_time;
 };
 
 int main(int argc, char** argv) {
@@ -372,17 +402,12 @@ int main(int argc, char** argv) {
         while (!RTPHeader_trait::get_M(rtpfile.get_pkt(n++).data()));
         return n;
     }();
+    auto adv_tp_v = RTPHeader_trait::get_timestamp(rtpfile.get_pkt(packet_in_frame).data()) - RTPHeader_trait::get_timestamp(rtpfile.front().data());
 
-    auto adv_tp_v    = RTPHeader_trait::get_timestamp(rtpfile.get_pkt(packet_in_frame).data()) - RTPHeader_trait::get_timestamp(rtpfile.front().data());
-    auto adv_sleep_v = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-        std::chrono::duration<double>(static_cast<double>(adv_tp_v) / J2KPayloadHeader_trait::media_clock_Hz)
-    );
-
-    packet_t pkt{};
-    auto sleep_v = std::chrono::steady_clock::now();
+    udp.set_clock(adv_tp_v);
     for (size_t i = 0; i < number_of_loop; ++i) {
         for (size_t p = 0; p < rtpfile.num_packet();) {
-            pkt = rtpfile.get_pkt(p);
+            auto pkt = rtpfile.get_pkt(p);
             if (cli.read_line()) {
                 switch (auto c = cli.optc(); c) {
                     case 's': // send
@@ -426,20 +451,21 @@ int main(int argc, char** argv) {
                         continue;
                     }
                     case 'r': { // rsync
-                        size_t cr;
-                        for (cr = 0;
-                             !J2KPayloadHeader_trait::get_body_ORDB(rtpfile.get_pkt(p + cr).data() + RTPHeader_trait::length);
-                             ++cr);
-                        cli.set_ignore(1 + cr);
-                        udp.set_ignore(1 + cr);
+                        size_t cr = 0;
+                        for (size_t i = 0; i < cli.optn(); ++i, ++cr) {
+                            for (; !J2KPayloadHeader_trait::get_body_ORDB(rtpfile.get_pkt(p + cr).data() + RTPHeader_trait::length);
+                                 ++cr);
+                        }
+                        cli.set_ignore(cr);
+                        udp.set_ignore(cr);
                     } break;
                     case 'e': { // EOC
                         size_t ce;
                         for (ce = 0;
                              !RTPHeader_trait::get_M(rtpfile.get_pkt(p + ce).data());
                              ++ce);
-                        cli.set_ignore(1 + ce);
-                        udp.set_ignore(1 + ce);
+                        cli.set_ignore(1 + ce + packet_in_frame * (cli.optn() - 1));
+                        udp.set_ignore(1 + ce + packet_in_frame * (cli.optn() - 1));
                     } break;
                     case 'q': // exit
                         goto EndOfLoop;
@@ -447,6 +473,7 @@ int main(int argc, char** argv) {
                         fprintf(stderr, "unknown argument: '%c'\n", c);
                         continue;
                 }
+                udp.set_sleep_v();
             }
 
             pktos.advance_tp(pkt, adv_tp_v);
@@ -456,12 +483,11 @@ int main(int argc, char** argv) {
                 exit(1);
             }
             ++p;
-            if (RTPHeader_trait::get_M(pkt.data())) {
-                std::this_thread::sleep_until(sleep_v += adv_sleep_v);
-            }
         }
     }
 EndOfLoop:
+
+    udp.print_result();
 
     return 0;
 }
