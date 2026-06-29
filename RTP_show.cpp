@@ -61,8 +61,8 @@ int main(int argc, char** argv) {
     auto print_info = [&]() {
         printf("pakcet[%ld]\n", num_packet);
         printf("packet size = %d\n", pktsize);
-        RTPHeader_trait::print_info(pktbuf);
-        J2KPayloadHeader_trait::print_info(pktbuf);
+        RTPHeader_trait::print_info(stdout, pktbuf);
+        J2KPayloadHeader_trait::print_info(stdout, pktbuf);
     };
 
     while (true) {
