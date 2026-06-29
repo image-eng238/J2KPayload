@@ -12,16 +12,16 @@ format: <command> <number>
 無効な <command>, <number> が渡された場合は何もしない．
 
 --- <command> に渡す値 ---
-<number> required
+<number> optional
 s: send，パケットを送信
 l: loss, パケットを破棄
 c: change, シーケンス番号を変更，送信をしない
+S: Show, 次に送るパケットのデータを確認，送信をしない
 
 <number> unnecessary
-S: Show, 次に送るパケットのデータを確認，送信をしない
 r: rsync, 次の再同期ポイントまで送信
-E: EOC, EOCが出現するまで送信
-e: exit, 終了
+e: EOC, EOCが出現するまで送信
+q: quit, 終了
 */
 
 /*
@@ -245,11 +245,17 @@ public:
     }
 
     void set_tp(uint32_t n) { tp = n; }
-    void write_tp(packet_t& pkt) { RTPHeader_trait::set_timestamp(pkt.data(), tp); }
     void set_exseq(uint32_t n) { exseq = n; }
-    void write_exseq(packet_t& pkt) { J2KPayloadHeader_trait::set_extended_sequence_number(pkt.data(), exseq); }
     void set_ptp(uint32_t n) { ptp = n; }
+
+    void write_tp(packet_t& pkt) { RTPHeader_trait::set_timestamp(pkt.data(), tp); }
+    void write_exseq(packet_t& pkt) { J2KPayloadHeader_trait::set_extended_sequence_number(pkt.data(), exseq); }
     void write_ptp(packet_t& pkt) { J2KPayloadHeader_trait::set_PTSTAMP(pkt.data() + RTPHeader_trait::length, ptp); }
+    void write(packet_t& pkt) {
+        write_tp(pkt);
+        write_exseq(pkt);
+        write_ptp(pkt);
+    }
 
 private:
     rtptimestamp_t tp;
@@ -361,7 +367,19 @@ int main(int argc, char** argv) {
     packet_os pktos{rtpfile.front()};
     packet_sender udp{addr, port};
 
+    const size_t packet_in_frame = [&] {
+        size_t n = 0;
+        while (!RTPHeader_trait::get_M(rtpfile.get_pkt(n++).data()));
+        return n;
+    }();
+
+    auto adv_tp_v    = RTPHeader_trait::get_timestamp(rtpfile.get_pkt(packet_in_frame).data()) - RTPHeader_trait::get_timestamp(rtpfile.front().data());
+    auto adv_sleep_v = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>(static_cast<double>(adv_tp_v) / J2KPayloadHeader_trait::media_clock_Hz)
+    );
+
     packet_t pkt{};
+    auto sleep_v = std::chrono::steady_clock::now();
     for (size_t i = 0; i < number_of_loop; ++i) {
         for (size_t p = 0; p < rtpfile.num_packet();) {
             pkt = rtpfile.get_pkt(p);
@@ -378,9 +396,7 @@ int main(int argc, char** argv) {
                         pktos.set_exseq(cli.optn());
                         continue;
                     case 'S': { // Show
-                        pktos.write_tp(pkt);
-                        pktos.write_exseq(pkt);
-                        pktos.write_ptp(pkt);
+                        pktos.write(pkt);
                         std::string_view pager = getenv("PAGER");
                         if (pager.empty()) {
                             pager = "less";
@@ -390,8 +406,19 @@ int main(int argc, char** argv) {
                             perror("popen");
                             exit(1);
                         }
+                        size_t num_pkt = udp.get_call();
+                        fprintf(fp, "packet[%ld] <-\nframe = %ld\nsize = %ld\n", num_pkt % packet_in_frame + 1, num_pkt / packet_in_frame + 1, pkt.size());
                         RTPHeader_trait::print_info(fp, pkt.data());
                         J2KPayloadHeader_trait::print_info(fp, pkt.data());
+                        putc('\n', fp);
+                        for (size_t iS = 1; iS < cli.optn(); ++iS) {
+                            const auto pos      = (++num_pkt < rtpfile.num_packet()) ? num_pkt : 0 + iS;
+                            const packet_t pktS = rtpfile.get_pkt(pos);
+                            fprintf(fp, "packet[%ld]\nframe = %ld\nsize = %ld\n", pos % packet_in_frame + 1, pos / packet_in_frame + 1, pktS.size());
+                            RTPHeader_trait::print_info(fp, pktS.data());
+                            J2KPayloadHeader_trait::print_info(fp, pktS.data());
+                            putc('\n', fp);
+                        }
                         if (pclose(fp) == -1) {
                             perror("pclose");
                             exit(1);
@@ -406,7 +433,7 @@ int main(int argc, char** argv) {
                         cli.set_ignore(1 + cr);
                         udp.set_ignore(1 + cr);
                     } break;
-                    case 'E': { // EOC
+                    case 'e': { // EOC
                         size_t ce;
                         for (ce = 0;
                              !RTPHeader_trait::get_M(rtpfile.get_pkt(p + ce).data());
@@ -414,20 +441,24 @@ int main(int argc, char** argv) {
                         cli.set_ignore(1 + ce);
                         udp.set_ignore(1 + ce);
                     } break;
-                    case 'e': // exit
+                    case 'q': // exit
                         goto EndOfLoop;
                     default:
-                        break;
+                        fprintf(stderr, "unknown argument: '%c'\n", c);
+                        continue;
                 }
             }
 
-            pktos.advance_tp(pkt, 1500);
+            pktos.advance_tp(pkt, adv_tp_v);
             pktos.advance_seq(pkt);
             if (!udp.send(pkt)) {
                 fprintf(stderr, "send error\n");
                 exit(1);
             }
             ++p;
+            if (RTPHeader_trait::get_M(pkt.data())) {
+                std::this_thread::sleep_until(sleep_v += adv_sleep_v);
+            }
         }
     }
 EndOfLoop:
