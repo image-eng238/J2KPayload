@@ -173,10 +173,12 @@ int main(int argc, char** argv) {
         }
     }
 
-    static leaky_bucket_buf::link_list packet_buffer[leaky_bucket_buf::NUM_BUFFER]{};
+    constexpr size_t BUFFER_SIZE = leaky_bucket_buf::NUM_BUFFER;
+    // constexpr size_t BUFFER_SIZE = 1360 * 2;
+    static leaky_bucket_buf::link_list packet_buffer[BUFFER_SIZE]{};
 
     UDPReceiver udp(addr.data(), port);
-    leaky_bucket_buf buffer(&udp, packet_buffer, leaky_bucket_buf::NUM_BUFFER);
+    leaky_bucket_buf buffer(&udp, packet_buffer, BUFFER_SIZE);
     RTPReceiver rtp_recv(&buffer);
 
     std::chrono::steady_clock::time_point avg_frame;
@@ -453,6 +455,7 @@ int main(int argc, char** argv) {
                 packet_abs += pkt_inc_a;
                 std::this_thread::sleep_until(packet_abs);
             } else if (result == leaky_bucket_buf::SIGNAL) {
+                img_clock_cond.notify_one();
                 break;
             } else if (likely(result == leaky_bucket_buf::FINISH)) {
                 break;
