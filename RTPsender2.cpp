@@ -21,6 +21,7 @@ r: rsync, 次の再同期ポイントまで送信
 e: EOC, EOCが出現するまで送信
 
 <number> unnecessary
+R: restart, 再起動
 h: help, ヘルプ
 q: quit, 終了
 */
@@ -274,6 +275,12 @@ public:
     void set_exseq(uint32_t n) { exseq = n; }
     void set_ptp(uint32_t n) { ptp = n; }
 
+    void to_base() {
+        tp    = base_tp;
+        exseq = base_exseq;
+        ptp   = base_ptp;
+    }
+
     void write_tp(packet_t& pkt) { RTPHeader_trait::set_timestamp(pkt.data(), tp); }
     void write_exseq(packet_t& pkt) { J2KPayloadHeader_trait::set_extended_sequence_number(pkt.data(), exseq); }
     void write_ptp(packet_t& pkt) { J2KPayloadHeader_trait::set_PTSTAMP(pkt.data() + RTPHeader_trait::length, ptp); }
@@ -333,6 +340,12 @@ public:
         prev_time = sleep_v = std::chrono::steady_clock::now();
     }
     void set_sleep_v() { prev_time = sleep_v = std::chrono::steady_clock::now(); }
+    void clear() {
+        send_call   = 0;
+        lost_packet = 0;
+        sent_frame  = 0;
+        sum_avg     = 0;
+    }
 
     size_t get_call() const { return send_call; }
 
@@ -457,6 +470,7 @@ int main(int argc, char** argv) {
     }
 
     udp.set_clock(adv_tp_v);
+RestartTheLoop:
     for (size_t i = 0; i < number_of_loop; ++i) {
         for (size_t p = 0; p < rtpfile.num_packet();) {
             auto pkt = rtpfile.get_pkt(p);
@@ -506,6 +520,13 @@ int main(int argc, char** argv) {
                              ++ce);
                         cli.set_ignore(1 + ce + packet_in_frame * (cli.optn() - 1));
                     } break;
+                    case 'R':
+                        pktos.to_base();
+                        udp.print_result();
+                        putc('\n', stdout);
+                        udp.clear();
+                        udp.set_sleep_v();
+                        goto RestartTheLoop;
                     case 'h': { // help
                         print2pager([](FILE* fp) {
                             fprintf(fp, "s: send n packets\n");
@@ -514,13 +535,14 @@ int main(int argc, char** argv) {
                             fprintf(fp, "v: view the data of n pakcets\n");
                             fprintf(fp, "r: send to rsync point\n");
                             fprintf(fp, "e: send to EOC\n");
+                            fprintf(fp, "R: restart\n");
                             fprintf(fp, "h: help\n");
                             fprintf(fp, "q: quit\n");
                         });
                         continue;
                     }
                     case 'q': // exit
-                        goto EndOfLoop;
+                        goto EndTheLoop;
                     default:
                         fprintf(stderr, "unknown argument: '%c', code: %d\n", c, c);
                         continue;
@@ -529,7 +551,7 @@ int main(int argc, char** argv) {
             }
             if (sig_flag) {
                 putc('\n', stdout);
-                goto EndOfLoop;
+                goto EndTheLoop;
             }
 
             pktos.advance_tp(pkt, adv_tp_v);
@@ -541,7 +563,7 @@ int main(int argc, char** argv) {
             ++p;
         }
     }
-EndOfLoop:
+EndTheLoop:
 
     udp.print_result();
 
