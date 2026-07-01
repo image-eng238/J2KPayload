@@ -56,10 +56,11 @@ int main(int argc, char** argv) {
     CPU_ZERO(&affinity);
     cpu_set_t affinity_analysis;
     CPU_ZERO(&affinity_analysis);
-    size_t buffer_length = 1360 * 10;
-    double rf_r          = 0.5;
-    double rf_a          = 0.25;
-    bool is_enter        = false;
+    constexpr size_t MAX_BUFFER_LENGTH = 1360 * 10;
+    size_t buffer_length               = MAX_BUFFER_LENGTH;
+    double rf_r                        = 0.5;
+    double rf_a                        = 0.25;
+    bool is_enter                      = false;
     enum class OutF : uint8_t {
         FPS,
         MS
@@ -78,7 +79,7 @@ int main(int argc, char** argv) {
              {'f', "frame", "The interval between frames to display default: 60"},
              {'c', "receive_affinity", "CPU affinity of the receive thread"},
              {'C', "analysis_affinity", "CPU affinity of the analysis thread"},
-             {'b', "BufferLength", "Maximum number of packets to buffer, default: 13600"},
+             {'b', "BufferLength", "Receive buffer length, default: 13600, max: 13600"},
              {0, "ReceiveFrequency", "The multiplier for the receiving thread frequency (90kHz). Fromat: \"receive:again\",default: 0.5:0.25"},
              {0, "Enter", "analysis thread continue at enter"},
              {0, "OutputFormat", "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
@@ -131,6 +132,10 @@ int main(int argc, char** argv) {
                 case args_list('b'): {
                     auto tmp = args.pop();
                     std::from_chars(tmp.begin(), tmp.end(), buffer_length);
+                    if (buffer_length > MAX_BUFFER_LENGTH) {
+                        fprintf(stderr, "-b: the maximum value is %ld\n", MAX_BUFFER_LENGTH);
+                        exit(1);
+                    }
                 } break;
                 case args_list("ReceiveFrequency"): {
                     auto tmp = args.pop();
@@ -173,12 +178,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    constexpr size_t BUFFER_SIZE = leaky_bucket_buf::NUM_BUFFER;
-    // constexpr size_t BUFFER_SIZE = 1360 * 2;
-    static leaky_bucket_buf::link_list packet_buffer[BUFFER_SIZE]{};
-
     UDPReceiver udp(addr.data(), port);
-    leaky_bucket_buf buffer(&udp, packet_buffer, BUFFER_SIZE);
+    static leaky_bucket_buf::link_list packet_buffer[MAX_BUFFER_LENGTH]{};
+    leaky_bucket_buf buffer(&udp, packet_buffer, buffer_length);
     RTPReceiver rtp_recv(&buffer);
 
     std::chrono::steady_clock::time_point avg_frame;
