@@ -21,9 +21,10 @@ public:
     static constexpr size_t BUFFER_SIZE = 1384;
     static constexpr size_t NUM_BUFFER  = 10 * 1360;
     struct link_list {
-        int data_size;
-        uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
         link_list* next_ptr;
+        int data_size;
+        uint32_t serial_number;
+        uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
         bool empty() const { return data_size <= 0; }
     };
 
@@ -68,16 +69,14 @@ public:
     template <typename Predcate, typename Callback = void(const uint8_t* const)>
     size_t dest(Predcate pred, Callback callback = [](const uint8_t* const) -> void {}) {
         std::unique_lock lk(mtx, std::defer_lock);
-        // size_t dest_packet = 0;
-        size_t num_dest = 0;
-        size_t up_limit = 0;
+        size_t dest_packet = 0;
         while (true) {
             lk.lock();
             cond.wait(lk, [this] { return current_num_data > 0; });
-            // const size_t up_limit = current_num_data;
-            up_limit = current_num_data;
+            const size_t up_limit = current_num_data;
+            current_num_data      = 0;
             lk.unlock();
-            // size_t num_dest = 0;
+            size_t num_dest = 0;
             // pred が true になるか，データがなくなるまでパケットを破棄
             // アクセスできるデータがなくなったら，アクセスできるデータ数を更新
             while (num_dest < up_limit) {
@@ -85,19 +84,19 @@ public:
                 ++num_dest;
                 popping->data_size = 0;
                 next_pop           = popping->next_ptr;
-                callback(popping->data);
                 if (pred(popping->data)) {
                     lk.lock();
-                    current_num_data -= num_dest;
+                    callback(popping->data);
+                    // current_num_data -= num_dest;
                     lk.unlock();
-                    // return dest_packet;
-                    return num_dest;
+                    return dest_packet + num_dest;
+                    // return num_dest;
                 }
             }
             // lk.lock();
             // current_num_data -= num_dest;
             // lk.unlock();
-            // dest_packet += num_dest;
+            dest_packet += num_dest;
         }
     }
 };

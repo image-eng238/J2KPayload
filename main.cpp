@@ -358,8 +358,8 @@ int main(int argc, char** argv) {
                         }
                         fprintf(
                             stderr,
-                            "  RTP error analysis_frame: %ld, lost_packet: %d, discarded_packet: %d, lost_precinct: %ld\n",
-                            analysis_frame, rtp_recv.get_lost_packet(), rtp_recv.get_last_sequence_number() - last_sequence, loss_precinct
+                            "  RTP error analysis_frame: %ld, lost_packet: %d, discarded_packet: %d, lost_precinct: %ld, in buf: %ld\n",
+                            analysis_frame, rtp_recv.get_lost_packet(), rtp_recv.get_last_sequence_number() - last_sequence, loss_precinct, buffer.get_num_data()
                         );
                         sum_lost_packet += rtp_recv.get_lost_packet();
                     } else {
@@ -372,10 +372,12 @@ int main(int argc, char** argv) {
                 } catch (buffer_leak& e) {
                     // buffer.clear();
                     const auto in_buf = buffer.get_num_data();
-                    auto dest_packet  = buffer.dest(
-                        [](const uint8_t* const data) -> bool { return static_cast<bool>(J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)); }
-                    );
                     fputs(e.what(), stderr);
+                    fflush(stderr);
+                    auto dest_packet = buffer.dest(
+                        // [](const uint8_t* const data) -> bool { return static_cast<bool>(J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)); }
+                        [&](const uint8_t* const data) -> bool { return static_cast<bool>(RTPHeader_trait::get_M(data)) || sig_flag; }
+                    );
                     fprintf(stderr, ": buffer leak error analysis_frame: %ld, discarded packsts: %ld, in buf: %ld\n", analysis_frame, dest_packet, in_buf);
                     ++loss_frame;
                     ++J2K_error_count;
@@ -435,7 +437,7 @@ int main(int argc, char** argv) {
                         img_clock_cond.notify_one();
                         is_img_init = true;
                     }
-                    // img_clock_cond.notify_one();
+                    img_clock_cond.notify_one();
                     pre_timestamp = tp;
                 }
                 const auto TPS = J2KPayloadHeader_trait::get_extended_sequence_number(pkt->data);

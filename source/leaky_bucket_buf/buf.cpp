@@ -10,7 +10,8 @@
 leaky_bucket_buf::leaky_bucket_buf(UDPReceiver* const ptr, link_list* const buf, size_t len)
     : next_write{buf}, next_pop{buf}, last_receive{nullptr}, udp{ptr}, current_num_data{}, tmp_num_data{}, noblocking_pop{}, mtx{}, cond{}, buf_list{buf} {
     for (size_t i = 0; i < len - 1; ++i) {
-        buf_list[i].next_ptr = &buf_list[i + 1];
+        buf_list[i].next_ptr      = &buf_list[i + 1];
+        buf_list[i].serial_number = i;
     }
     buf_list[len - 1].next_ptr = buf_list;
 }
@@ -90,7 +91,7 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
 
     next_pop = popping->next_ptr;
 
-    assert(out != 0);
+    if (out == 0) { throw buffer_leak("empty paket popping"); }
     return out;
 }
 
