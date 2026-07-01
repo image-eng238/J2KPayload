@@ -379,8 +379,7 @@ int main(int argc, char** argv) {
     size_t number_of_loop = 1;
     bool is_enter_opt     = false;
 
-    std::chrono::steady_clock interval                      = {};
-    std::chrono::steady_clock::time_point allowable_time_ms = {};
+    std::chrono::steady_clock::duration interval{};
 
     {
         using namespace tklib;
@@ -410,7 +409,9 @@ int main(int argc, char** argv) {
                     break;
                 case args_list('i'): {
                     const auto tmp = args.pop();
-                    // std::from_chars(tmp.begin(), tmp.end(), interval);
+                    double tmpd;
+                    std::from_chars(tmp.begin(), tmp.end(), tmpd);
+                    interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double, std::micro>(tmpd));
                 } break;
                 case args_list('f'): {
                     const auto tmp_s = args.pop();
@@ -561,6 +562,7 @@ RestartTheLoop:
                 exit(1);
             }
             ++p;
+            std::this_thread::sleep_for(interval);
         }
     }
 EndTheLoop:
