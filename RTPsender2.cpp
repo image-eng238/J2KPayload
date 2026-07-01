@@ -45,6 +45,12 @@ q: quit, 終了
 #include <filesystem>
 #include <cstdio>
 #include <vector>
+#include <csignal>
+
+sig_atomic_t sig_flag = 0;
+void sig_handler(int sig_num) {
+    sig_flag = 1;
+}
 
 template <typename T, typename L = std::size_t>
 struct pointer_with_length {
@@ -176,6 +182,7 @@ public:
         int c = 0;
         input.clear();
         while ((c = getchar()) != '\n') {
+            if (c == -1) { return false; }
             input.push_back(c);
         }
         if (input.empty()) {
@@ -269,12 +276,13 @@ private:
 class packet_sender {
 public:
     packet_sender(std::string_view addr, uint16_t port)
-        : udp{addr.data(), port}, send_call{}, ignore_count{}, sent_frame{}, out_frame{}, sum_avg{}, adv_sleep_v{}, sleep_v{} {}
+        : udp{addr.data(), port}, send_call{}, lost_packet{}, ignore_count{}, sent_frame{}, out_frame{}, sum_avg{}, data_fps{}, adv_sleep_v{}, sleep_v{} {}
 
     bool send(const packet_t& pkt) {
         ++send_call;
         if (ignore_count != 0) {
             --ignore_count;
+            ++lost_packet;
         } else {
             if (udp.send(pkt.ptr, pkt.len) == -1) {
                 perror("sendto");
@@ -298,6 +306,7 @@ public:
 
     void set_ignore(size_t n) { ignore_count = n; }
     void set_clock(size_t t) {
+        data_fps    = static_cast<double>(J2KPayloadHeader_trait::media_clock_Hz) / t;
         adv_sleep_v = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
             std::chrono::duration<double>(static_cast<double>(t) / J2KPayloadHeader_trait::media_clock_Hz)
         );
@@ -309,16 +318,23 @@ public:
     size_t get_call() const { return send_call; }
 
     void print_result() {
+        printf("========================================\n");
+        printf("fps based on data: %lffps ~= %ldfps\n", data_fps, out_frame);
         printf("average fps: %lffps\n", sum_avg / (sent_frame / out_frame));
+        printf("lost packets: %ld\n", lost_packet);
+        printf("sent packets: %ld\n", send_call - lost_packet);
+        printf("sent frames: %ld\n", sent_frame);
     }
 
 private:
     UDPSender udp;
     size_t send_call;
+    size_t lost_packet;
     size_t ignore_count;
     size_t sent_frame;
     size_t out_frame;
     double sum_avg;
+    double data_fps;
     std::chrono::steady_clock::duration adv_sleep_v;
     std::chrono::steady_clock::time_point sleep_v;
     std::chrono::steady_clock::time_point prev_time;
@@ -404,6 +420,23 @@ int main(int argc, char** argv) {
     }();
     auto adv_tp_v = RTPHeader_trait::get_timestamp(rtpfile.get_pkt(packet_in_frame).data()) - RTPHeader_trait::get_timestamp(rtpfile.front().data());
 
+    struct sigaction sa{};
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags   = 0;
+    sa.sa_handler = sig_handler;
+    if (sigaction(SIGINT, &sa, nullptr) == -1) {
+        perror("sigaction(SIGINT)");
+        exit(1);
+    }
+
+    sigset_t new_sig_set;
+    sigemptyset(&new_sig_set);
+    sigaddset(&new_sig_set, SIGINT);
+    if (sigprocmask(SIG_UNBLOCK, &new_sig_set, nullptr) == -1) {
+        perror("sigprocmask");
+        exit(1);
+    }
+
     udp.set_clock(adv_tp_v);
     for (size_t i = 0; i < number_of_loop; ++i) {
         for (size_t p = 0; p < rtpfile.num_packet();) {
@@ -470,10 +503,14 @@ int main(int argc, char** argv) {
                     case 'q': // exit
                         goto EndOfLoop;
                     default:
-                        fprintf(stderr, "unknown argument: '%c'\n", c);
+                        fprintf(stderr, "unknown argument: '%c', code: %d\n", c, c);
                         continue;
                 }
                 udp.set_sleep_v();
+            }
+            if (sig_flag) {
+                putc('\n', stdout);
+                goto EndOfLoop;
             }
 
             pktos.advance_tp(pkt, adv_tp_v);
