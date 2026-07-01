@@ -362,7 +362,7 @@ private:
 int main(int argc, char** argv) {
     std::string_view addr = "127.0.0.1", rtp_path;
     uint16_t port         = 50001;
-    size_t skep_frame     = 0;
+    size_t fps_overwrite  = SIZE_MAX;
     size_t number_of_loop = 1;
     bool is_enter_opt     = false;
 
@@ -376,8 +376,7 @@ int main(int argc, char** argv) {
              {'p', "port", "Send to port. default: 50001"},
              {'r', "rtp_file", "The .rtp file source of packet to send"},
              {'i', "interval", "Packet transmission interval (microseconds)"},
-             {'s', "skep_frame", "Number of frames to skip"},
-             {'f', "frame_rate", "Frame fate. default: 60"},
+             {'f', "frame_rate", "Overwrite the frame fate. default: values in the rtp file"},
              {'l', "loop", "Number of loops"},
              {0, "Enter", "Send with Enter key"},
              {'h', "help", "Show this"}}
@@ -400,15 +399,14 @@ int main(int argc, char** argv) {
                     const auto tmp = args.pop();
                     // std::from_chars(tmp.begin(), tmp.end(), interval);
                 } break;
-                case args_list('s'): {
-                    const auto tmp = args.pop();
-                    std::from_chars(tmp.begin(), tmp.end(), skep_frame);
-                } break;
                 case args_list('f'): {
                     const auto tmp_s = args.pop();
-                    int64_t tmp_i;
-                    std::from_chars(tmp_s.begin(), tmp_s.end(), tmp_i);
-                    // allowable_time = static_cast<int64_t>(1.0 / tmp_i * 1000);
+                    std::from_chars(tmp_s.begin(), tmp_s.end(), fps_overwrite);
+                    if (fps_overwrite != 0 && fps_overwrite <= J2KPayloadHeader_trait::media_clock_Hz) {
+                        fps_overwrite = J2KPayloadHeader_trait::media_clock_Hz / fps_overwrite;
+                    } else {
+                        fps_overwrite = SIZE_MAX;
+                    }
                 } break;
                 case args_list('l'): {
                     const auto tmp = args.pop();
@@ -437,7 +435,9 @@ int main(int argc, char** argv) {
         while (!RTPHeader_trait::get_M(rtpfile.get_pkt(n++).data()));
         return n;
     }();
-    auto adv_tp_v = RTPHeader_trait::get_timestamp(rtpfile.get_pkt(packet_in_frame).data()) - RTPHeader_trait::get_timestamp(rtpfile.front().data());
+    const auto adv_tp_v = (fps_overwrite != SIZE_MAX)
+                              ? fps_overwrite
+                              : RTPHeader_trait::get_timestamp(rtpfile.get_pkt(packet_in_frame).data()) - RTPHeader_trait::get_timestamp(rtpfile.front().data());
 
     struct sigaction sa{};
     sigemptyset(&sa.sa_mask);
