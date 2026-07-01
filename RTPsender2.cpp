@@ -16,11 +16,12 @@ format: <command> <number>
 s: send，パケットを送信
 l: loss, パケットを破棄
 c: change, シーケンス番号を変更，送信をしない
-S: Show, 次に送るパケットのデータを確認，送信をしない
+v: view, 次に送るパケットのデータを確認，送信をしない
 r: rsync, 次の再同期ポイントまで送信
 e: EOC, EOCが出現するまで送信
 
 <number> unnecessary
+h: help, ヘルプ
 q: quit, 終了
 */
 
@@ -50,6 +51,24 @@ q: quit, 終了
 sig_atomic_t sig_flag = 0;
 void sig_handler(int sig_num) {
     sig_flag = 1;
+}
+
+template <typename Callback>
+void print2pager(Callback print_function) {
+    std::string_view pager = getenv("PAGER");
+    if (pager.empty()) {
+        pager = "less";
+    }
+    FILE* fp = popen(pager.data(), "w");
+    if (fp == nullptr) {
+        perror("popen");
+        exit(1);
+    }
+    print_function(fp);
+    if (pclose(fp) == -1) {
+        perror("pclose");
+        exit(1);
+    }
 }
 
 template <typename T, typename L = std::size_t>
@@ -453,34 +472,23 @@ int main(int argc, char** argv) {
                     case 'c': // change
                         pktos.set_exseq(cli.optn());
                         continue;
-                    case 'S': { // Show
+                    case 'v': { // view
                         pktos.write(pkt);
-                        std::string_view pager = getenv("PAGER");
-                        if (pager.empty()) {
-                            pager = "less";
-                        }
-                        FILE* fp = popen(pager.data(), "w");
-                        if (fp == nullptr) {
-                            perror("popen");
-                            exit(1);
-                        }
-                        size_t num_pkt = udp.get_call();
-                        fprintf(fp, "packet[%ld] <-\nframe = %ld\nsize = %ld\n", num_pkt % packet_in_frame + 1, num_pkt / packet_in_frame + 1, pkt.size());
-                        RTPHeader_trait::print_info(fp, pkt.data());
-                        J2KPayloadHeader_trait::print_info(fp, pkt.data());
-                        putc('\n', fp);
-                        for (size_t iS = 1; iS < cli.optn(); ++iS) {
-                            const auto pos      = (++num_pkt < rtpfile.num_packet()) ? num_pkt : 0 + iS;
-                            const packet_t pktS = rtpfile.get_pkt(pos);
-                            fprintf(fp, "packet[%ld]\nframe = %ld\nsize = %ld\n", pos % packet_in_frame + 1, pos / packet_in_frame + 1, pktS.size());
-                            RTPHeader_trait::print_info(fp, pktS.data());
-                            J2KPayloadHeader_trait::print_info(fp, pktS.data());
+                        print2pager([&](FILE* fp) {
+                            size_t num_pkt = udp.get_call();
+                            fprintf(fp, "packet[%ld] <-\nframe = %ld\nsize = %ld\n", num_pkt % packet_in_frame + 1, num_pkt / packet_in_frame + 1, pkt.size());
+                            RTPHeader_trait::print_info(fp, pkt.data());
+                            J2KPayloadHeader_trait::print_info(fp, pkt.data());
                             putc('\n', fp);
-                        }
-                        if (pclose(fp) == -1) {
-                            perror("pclose");
-                            exit(1);
-                        }
+                            for (size_t iS = 1; iS < cli.optn(); ++iS) {
+                                const auto pos      = (++num_pkt < rtpfile.num_packet()) ? num_pkt : 0 + iS;
+                                const packet_t pktS = rtpfile.get_pkt(pos);
+                                fprintf(fp, "packet[%ld]\nframe = %ld\nsize = %ld\n", pos % packet_in_frame + 1, pos / packet_in_frame + 1, pktS.size());
+                                RTPHeader_trait::print_info(fp, pktS.data());
+                                J2KPayloadHeader_trait::print_info(fp, pktS.data());
+                                putc('\n', fp);
+                            }
+                        });
                         continue;
                     }
                     case 'r': { // rsync
@@ -500,6 +508,19 @@ int main(int argc, char** argv) {
                         cli.set_ignore(1 + ce + packet_in_frame * (cli.optn() - 1));
                         udp.set_ignore(1 + ce + packet_in_frame * (cli.optn() - 1));
                     } break;
+                    case 'h': { // help
+                        print2pager([](FILE* fp) {
+                            fprintf(fp, "s: send n packets\n");
+                            fprintf(fp, "l: loss n packets\n");
+                            fprintf(fp, "c: change sequence to n\n");
+                            fprintf(fp, "v: view the data of n pakcets\n");
+                            fprintf(fp, "r: send to rsync point\n");
+                            fprintf(fp, "e: send to EOC\n");
+                            fprintf(fp, "h: help\n");
+                            fprintf(fp, "q: quit\n");
+                        });
+                        continue;
+                    }
                     case 'q': // exit
                         goto EndOfLoop;
                     default:
