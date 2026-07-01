@@ -498,7 +498,6 @@ int main(int argc, char** argv) {
                                  ++cr);
                         }
                         cli.set_ignore(cr);
-                        udp.set_ignore(cr);
                     } break;
                     case 'e': { // EOC
                         size_t ce;
@@ -506,7 +505,6 @@ int main(int argc, char** argv) {
                              !RTPHeader_trait::get_M(rtpfile.get_pkt(p + ce).data());
                              ++ce);
                         cli.set_ignore(1 + ce + packet_in_frame * (cli.optn() - 1));
-                        udp.set_ignore(1 + ce + packet_in_frame * (cli.optn() - 1));
                     } break;
                     case 'h': { // help
                         print2pager([](FILE* fp) {
