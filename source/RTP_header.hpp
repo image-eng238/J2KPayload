@@ -341,6 +341,7 @@ public:
                 }
                 while (true) {
                     len = buffer->pop(data);
+                    if (unlikely(len == 1 && RTPHeader_trait::get_V(data) != 0b10)) return this->FINISH;
                     if (!get_MH(data + hl) && get_body_ORDB(data + hl)) {
                         pre_sequence_number = get_extended_sequence_number(data);
                         PID                 = get_body_PID(data + hl);

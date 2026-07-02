@@ -57,6 +57,7 @@ private:
     size_t current_num_data; // 双方からアクセス 同期処理を行う
     size_t tmp_num_data;     // 受信スレッドで mutex の取得ができないときに受信したデータ数を記録
     size_t noblocking_pop;   // 解析スレッドで mutex の取得ができないときに備えて取り出せるデータ数をコピー
+    size_t buffer_length;
 
     std::mutex mtx;
     std::condition_variable cond;

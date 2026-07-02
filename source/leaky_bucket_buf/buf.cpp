@@ -8,7 +8,7 @@
 #define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
 
 leaky_bucket_buf::leaky_bucket_buf(UDPReceiver* const ptr, link_list* const buf, size_t len)
-    : next_write{buf}, next_pop{buf}, last_receive{nullptr}, udp{ptr}, current_num_data{}, tmp_num_data{}, noblocking_pop{}, mtx{}, cond{}, buf_list{buf} {
+    : next_write{buf}, next_pop{buf}, last_receive{nullptr}, udp{ptr}, current_num_data{}, tmp_num_data{}, noblocking_pop{}, buffer_length{len}, mtx{}, cond{}, buf_list{buf} {
     for (size_t i = 0; i < len - 1; ++i) {
         buf_list[i].next_ptr      = &buf_list[i + 1];
         buf_list[i].serial_number = i;
@@ -56,6 +56,7 @@ int leaky_bucket_buf::receive() {
     if (lk.try_lock()) {
         current_num_data += 1 + tmp_num_data;
         if (tmp_num_data != 0) tmp_num_data = 0;
+        current_num_data = std::min(current_num_data, buffer_length);
         // assert(current_num_data < NUM_BUFFER);
         lk.unlock();
         cond.notify_one();
@@ -68,20 +69,21 @@ int leaky_bucket_buf::receive() {
 }
 
 int leaky_bucket_buf::pop(uint8_t*& ptr) {
+    auto pred = [this]() -> bool { return current_num_data > 0; };
     std::unique_lock lk(mtx, std::defer_lock);
     if constexpr (true) {
         if (noblocking_pop != 0) {
             --noblocking_pop;
         } else {
             lk.lock();
-            cond.wait(lk, [this] { return current_num_data > 0; });
+            cond.wait(lk, pred);
 
             noblocking_pop   = current_num_data - 1;
             current_num_data = 0;
         }
     } else {
         lk.lock();
-        cond.wait(lk, [this] { return current_num_data > 0; });
+        cond.wait(lk, pred);
         --current_num_data;
     }
     auto popping       = next_pop;

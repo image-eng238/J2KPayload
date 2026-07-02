@@ -437,7 +437,7 @@ int main(int argc, char** argv) {
                         img_clock_cond.notify_one();
                         is_img_init = true;
                     }
-                    img_clock_cond.notify_one();
+                    // img_clock_cond.notify_one();
                     pre_timestamp = tp;
                 }
                 const auto TPS = J2KPayloadHeader_trait::get_extended_sequence_number(pkt->data);
@@ -462,6 +462,7 @@ int main(int argc, char** argv) {
                 img_clock_cond.notify_one();
                 break;
             } else if (likely(result == leaky_bucket_buf::FINISH)) {
+                img_clock_cond.notify_one();
                 break;
             }
         }
