@@ -190,7 +190,7 @@ public:
     cli_parser() : ignore_count{}, input{}, opt_number{}, opt_character{}, is_active{false} {}
     cli_parser(bool active) : cli_parser{} { is_active = active; }
 
-    bool read_line() {
+    bool read_line(const char* const prefix = nullptr) {
         if (!is_active) return false;
 
         if (ignore_count != 0) {
@@ -198,7 +198,11 @@ public:
             return false;
         }
 
-        printf("> ");
+        if (prefix != nullptr) {
+            printf("%s> ", prefix);
+        } else {
+            printf("> ");
+        }
         int c = 0;
         input.clear();
         while ((c = getchar()) != '\n') {
@@ -475,7 +479,7 @@ RestartTheLoop:
     for (size_t i = 0; i < number_of_loop; ++i) {
         for (size_t p = 0; p < rtpfile.num_packet();) {
             auto pkt = rtpfile.get_pkt(p);
-            if (cli.read_line()) {
+            if (cli.read_line(std::to_string(udp.get_call()).data())) {
                 switch (auto c = cli.optc(); c) {
                     case 's': // send
                         cli.set_ignore(cli.optn());
