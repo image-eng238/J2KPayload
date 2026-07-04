@@ -506,6 +506,9 @@ int main(int argc, char** argv) {
     receive_thread.join();
 
     printf("=============================================\n");
+    printf("args:");
+    for (int i = 1; i < argc; ++i) { printf(" %s", argv[i]); }
+    putc('\n', stdout);
     printf("analysis thread's operating time: %lfs\n", analysis_operating_time);
     printf("receive thread's operating time: %lfs\n", receive_operating_time);
     if (output_format == OutF::FPS) {
