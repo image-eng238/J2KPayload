@@ -374,10 +374,15 @@ int main(int argc, char** argv) {
                     const auto in_buf = buffer.get_num_data();
                     fputs(e.what(), stderr);
                     fflush(stderr);
-                    auto dest_packet = buffer.dest(
-                        // [](const uint8_t* const data) -> bool { return static_cast<bool>(J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length)); }
-                        [&](const uint8_t* const data) -> bool { return static_cast<bool>(RTPHeader_trait::get_M(data)) || sig_flag; }
-                    );
+                    size_t dest_packet = 0;
+                    while (true) {
+                        uint8_t* ptr;
+                        auto len = buffer.pop(ptr);
+                        ++dest_packet;
+                        if (J2KPayloadHeader_trait::get_MH(ptr + RTPHeader_trait::length) || sig_flag) {
+                            break;
+                        }
+                    }
                     fprintf(stderr, ": buffer leak error analysis_frame: %ld, discarded packsts: %ld, in buf: %ld\n", analysis_frame, dest_packet, in_buf);
                     ++loss_frame;
                     ++J2K_error_count;
@@ -475,6 +480,7 @@ int main(int argc, char** argv) {
         printf("again:   %ld\n", count_again);
         printf("receive probability: %lf%% \n", static_cast<double>(count_receive) / static_cast<double>(count_receive + count_again) * 100);
 #endif
+        buffer.inspkt();
     });
 
     if (CPU_COUNT(&affinity) != 0) {

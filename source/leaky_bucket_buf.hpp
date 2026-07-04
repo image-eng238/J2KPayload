@@ -26,6 +26,7 @@ public:
         uint32_t serial_number;
         uint8_t data[leaky_bucket_buf::BUFFER_SIZE];
         bool empty() const { return data_size <= 0; }
+        static void advance(link_list*& ptr) { ptr = ptr->next_ptr; }
     };
 
     enum {
@@ -38,6 +39,7 @@ public:
 
     constexpr void set_udp(UDPReceiver* const);
     int receive();
+    void inspkt();
     int pop(uint8_t*&);
     void clear();
     static uint32_t get_seq(const uint8_t* const data) { return static_cast<uint32_t>(data[15] << 0x10) | static_cast<uint32_t>(data[2] << 0x8) | static_cast<uint32_t>(data[3]); }

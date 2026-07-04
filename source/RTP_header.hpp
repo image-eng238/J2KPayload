@@ -332,7 +332,7 @@ public:
                     return this->SUCCESS;
                 }
             } else {
-                printf("pre: %d, seq: %d\n", pre_sequence, sequence);
+                printf("pre: %d, seq: %d, diff: %d\n", pre_sequence, sequence, sequence - pre_sequence);
                 // パケットロス発生 次の再同期ポイントまでパケットを破棄
                 if (sequence == 0) {
                     num_lost_packet = ex_sequence_max - pre_sequence;
@@ -360,10 +360,10 @@ public:
             const auto& pkt = packets[pos++];
             ptr             = pkt.data + hl;
             if (pos != num_packets) {
-                assert(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()));
+                if (unlikely(J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()))) { throw buffer_leak("ORDB"); }
                 len = static_cast<size_t>(pkt.len - hl);
             } else {
-                assert(J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()));
+                if (unlikely(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()))) { throw buffer_leak("ORDB"); }
                 len = J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
             }
         } else {

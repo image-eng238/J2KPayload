@@ -5,7 +5,7 @@
 #include <cassert>
 #include <thread>
 
-#define PRINT_ASSERTION(expr, msg, ...) assert(((expr) ? true : (printf("assertion message: " msg, __VA_ARGS__), false)))
+static constexpr bool NO_BLOCKING_MTX = false;
 
 leaky_bucket_buf::leaky_bucket_buf(UDPReceiver* const ptr, link_list* const buf, size_t len)
     : next_write{buf}, next_pop{buf}, last_receive{nullptr}, udp{ptr}, current_num_data{}, tmp_num_data{}, noblocking_pop{}, buffer_length{len}, mtx{}, cond{}, buf_list{buf} {
@@ -32,14 +32,7 @@ int leaky_bucket_buf::receive() {
             return AGAIN;
         }
         if (errno == EINTR) {
-            std::unique_lock lk{mtx};
-            current_num_data += 1 + tmp_num_data;
-            next_write         = writing->next_ptr;
-            last_receive       = writing;
-            writing->data_size = 1;
-            writing->data[0]   = 0;
-            lk.unlock();
-            cond.notify_one();
+            inspkt();
             return SIGNAL;
         } else {
             perror("receive error");
@@ -49,29 +42,55 @@ int leaky_bucket_buf::receive() {
 
     int output = (writing->data[0] & 0x80) ? RECEIVED : FINISH;
 
-    next_write   = writing->next_ptr;
     last_receive = writing;
+    link_list::advance(next_write);
 
     std::unique_lock lk(mtx, std::defer_lock);
-    if (lk.try_lock()) {
-        current_num_data += 1 + tmp_num_data;
-        if (tmp_num_data != 0) tmp_num_data = 0;
-        current_num_data = std::min(current_num_data, buffer_length);
-        // assert(current_num_data < NUM_BUFFER);
+    if constexpr (NO_BLOCKING_MTX) {
+        if (lk.try_lock()) {
+            current_num_data += 1 + tmp_num_data;
+            if (tmp_num_data != 0) tmp_num_data = 0;
+            current_num_data = std::min(current_num_data, buffer_length);
+            // assert(current_num_data < NUM_BUFFER);
+            lk.unlock();
+            cond.notify_one();
+        } else {
+            ++tmp_num_data;
+        }
+    } else {
+        lk.lock();
+        if (++current_num_data > buffer_length) {
+            link_list::advance(next_pop);
+            current_num_data = buffer_length;
+        }
         lk.unlock();
         cond.notify_one();
-    } else {
-        ++tmp_num_data;
-        // スレッドセーフでないが current_num_data は他スレッドから操作は減算のみであるためアサーションに使用
-        // assert(current_num_data + tmp_num_data < NUM_BUFFER);
     }
     return output;
+}
+void leaky_bucket_buf::inspkt() {
+    auto* writing = next_write;
+    std::unique_lock lk{mtx};
+    if constexpr (NO_BLOCKING_MTX) {
+        current_num_data += 1 + tmp_num_data;
+    } else {
+        if (++current_num_data > buffer_length) {
+            link_list::advance(next_pop);
+            current_num_data = buffer_length;
+        }
+    }
+    next_write         = writing->next_ptr;
+    last_receive       = writing;
+    writing->data_size = 1;
+    writing->data[0]   = 0;
+    lk.unlock();
+    cond.notify_one();
 }
 
 int leaky_bucket_buf::pop(uint8_t*& ptr) {
     auto pred = [this]() -> bool { return current_num_data > 0; };
     std::unique_lock lk(mtx, std::defer_lock);
-    if constexpr (true) {
+    if constexpr (NO_BLOCKING_MTX) {
         if (noblocking_pop != 0) {
             --noblocking_pop;
         } else {
@@ -91,9 +110,10 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
     ptr                = popping->data;
     popping->data_size = 0;
 
-    next_pop = popping->next_ptr;
+    link_list::advance(next_pop);
 
     if (out == 0) { throw buffer_leak("empty paket popping"); }
+    lk.unlock();
     return out;
 }
 
