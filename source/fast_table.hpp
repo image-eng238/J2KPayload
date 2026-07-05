@@ -27,7 +27,7 @@ struct fast_table {
         static size_t call_count = 0;
         call_count++;
         if (unlikely(!payload_buf.get_bit())) { // empty packet
-            throw buffer_leak("j2k empty packet");
+            throw buffer_leak("j2k empty packet", buffer_leak::ANALYSISING);
         }
         for (uint8_t i = 0; i < this->number_of_subband; ++i) {
 #ifdef GENERATE_LOG

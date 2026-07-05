@@ -189,6 +189,7 @@ int main(int argc, char** argv) {
     uint32_t frame_lost_precinct   = 0;
     size_t RTP_error_count         = 0;
     size_t J2K_error_count         = 0;
+    size_t error_counts[3]         = {};
     long double sum_avg            = 0;
     size_t sum_lost_packet         = 0;
     double analysis_operating_time = 0;
@@ -387,6 +388,7 @@ int main(int argc, char** argv) {
                     ++loss_frame;
                     ++J2K_error_count;
                     table_index = 0;
+                    ++error_counts[e.type];
                 }
         }
 #ifdef DISABLE_TABLE
@@ -522,6 +524,8 @@ int main(int argc, char** argv) {
     printf("packet loss rate: %lf%%\n", (sum_lost_packet / (analysis_frame * 1360.0)) * 100);
     printf("RTP packet error: %ld\n", RTP_error_count);
     printf("J2K packet error: %ld\n", J2K_error_count);
+    for (int i = 0; i < 3; ++i) printf("leak_error[%d]: %ld\n", i, error_counts[i]);
+    printf("in buf: %ld\n", buffer.get_num_data());
 
 #ifdef RTP_CLOCK_CHECK
     {

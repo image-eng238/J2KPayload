@@ -13,7 +13,14 @@
 
 class buffer_leak : public std::runtime_error {
 public:
-    explicit buffer_leak(const std::string& arg) : std::runtime_error{arg} {}
+    enum {
+        OTHER,
+        ANALYSISING,
+        EMPTY_POP,
+    };
+    explicit buffer_leak(const std::string& arg) : std::runtime_error{arg}, type{OTHER} {}
+    explicit buffer_leak(const std::string& arg, const int t) : std::runtime_error{arg}, type{t} {}
+    int type;
 };
 
 class leaky_bucket_buf {
@@ -46,6 +53,10 @@ public:
     size_t get_num_data() {
         std::unique_lock lk{mtx};
         return current_num_data + tmp_num_data;
+    }
+    bool empty() {
+        std::unique_lock lk{mtx};
+        return (current_num_data + tmp_num_data == 0) && (next_write->serial_number == next_pop->serial_number);
     }
     size_t get_num_data_unsafe() const { return current_num_data + tmp_num_data; }
     const link_list* get_last_packet() const { return last_receive; }

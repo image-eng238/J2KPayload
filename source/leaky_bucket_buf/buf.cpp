@@ -112,7 +112,7 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
 
     link_list::advance(next_pop);
 
-    if (out == 0) { throw buffer_leak("empty paket popping"); }
+    if (out == 0) { throw buffer_leak("empty paket popping", buffer_leak::EMPTY_POP); }
     lk.unlock();
     return out;
 }
