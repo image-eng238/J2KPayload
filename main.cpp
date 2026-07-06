@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
         MS
     };
     OutF output_format = OutF::FPS;
-    using clock_t      = std::chrono::system_clock;
+    using clock_t      = std::chrono::high_resolution_clock;
 
 #ifdef RTP_CLOCK_CHECK
     size_t clock_check_size = 120;
@@ -251,14 +251,15 @@ int main(int argc, char** argv) {
             ++analysis_frame;
 
             img_clock += to_duration(img_inc.load(std::memory_order_acquire));
+            img_clock -= clock_t::duration{1};
             std::this_thread::sleep_until(img_clock);
+            const auto now = clock_t::now();
 #ifdef RTP_CLOCK_CHECK
             if (debug_clock_it != debug_clock_it_end)
-                *debug_clock_it = clock_t::now();
+                *debug_clock_it = now;
             ++debug_clock_it;
 #endif
             if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                auto now = clock_t::now();
                 auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
                 if (output_format == OutF::FPS) {
                     const auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
@@ -304,9 +305,9 @@ int main(int argc, char** argv) {
         if (likely(!is_enter)) {
             std::unique_lock lk{img_clock_locker};
             img_clock_cond.wait(lk);
-            img_clock = clock_t::now();
-            avg_frame = img_clock;
         }
+        img_clock = clock_t::now();
+        avg_frame = img_clock;
         while (!sig_flag) {
 #ifdef DISABLE_TABLE
             MainHeader main_header;
