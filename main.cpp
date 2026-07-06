@@ -66,6 +66,7 @@ int main(int argc, char** argv) {
         MS
     };
     OutF output_format = OutF::FPS;
+    using clock_t      = std::chrono::system_clock;
 
 #ifdef RTP_CLOCK_CHECK
     size_t clock_check_size = 120;
@@ -183,7 +184,7 @@ int main(int argc, char** argv) {
     leaky_bucket_buf buffer(&udp, packet_buffer, buffer_length);
     RTPReceiver rtp_recv(&buffer);
 
-    std::chrono::steady_clock::time_point avg_frame;
+    clock_t::time_point avg_frame;
     size_t analysis_frame          = 0;
     size_t loss_frame              = 0;
     uint32_t frame_lost_precinct   = 0;
@@ -200,12 +201,12 @@ int main(int argc, char** argv) {
     std::mutex img_clock_locker;
     std::condition_variable img_clock_cond;
     std::atomic_uint32_t img_inc = 0;
-    std::chrono::steady_clock::time_point img_clock;
+    clock_t::time_point img_clock;
 
-    auto to_duration = [](const auto t) constexpr { return std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>{t * (1.0 / J2KPayloadHeader_trait::media_clock_Hz)}); };
+    auto to_duration = [](const auto t) constexpr { return std::chrono::duration_cast<clock_t::duration>(std::chrono::duration<double>{t * (1.0 / J2KPayloadHeader_trait::media_clock_Hz)}); };
 
 #ifdef RTP_CLOCK_CHECK
-    std::vector<std::chrono::steady_clock::time_point> debug_clock_check{clock_check_size};
+    std::vector<clock_t::time_point> debug_clock_check{clock_check_size};
     auto debug_clock_it           = debug_clock_check.begin();
     const auto debug_clock_it_end = debug_clock_check.end();
 #endif
@@ -232,8 +233,8 @@ int main(int argc, char** argv) {
     /***************************************************************************************************/
 
     std::thread analysis_thread([&] {
-        std::chrono::steady_clock::time_point analysis_start;
-        std::chrono::steady_clock::time_point analysis_finish;
+        clock_t::time_point analysis_start;
+        clock_t::time_point analysis_finish;
         size_t table_index     = 0;
         uint32_t PID           = 0;
         uint32_t last_sequence = 0;
@@ -253,20 +254,22 @@ int main(int argc, char** argv) {
             std::this_thread::sleep_until(img_clock);
 #ifdef RTP_CLOCK_CHECK
             if (debug_clock_it != debug_clock_it_end)
-                *debug_clock_it = std::chrono::steady_clock::now();
+                *debug_clock_it = clock_t::now();
             ++debug_clock_it;
 #endif
             if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                auto now = std::chrono::steady_clock::now();
+                auto now = clock_t::now();
                 auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
                 if (output_format == OutF::FPS) {
                     const auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
                     sum_avg += avg_fps;
-                    printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
+                    // printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
+                    printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld\n", analysis_frame, avg_fps, buffer.get_num_data());
                 } else if (output_format == OutF::MS) {
                     const auto avg_ms = (static_cast<float>(avg.count()) / out_flame) / 1000;
                     sum_avg += avg_ms;
-                    printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, avg_ms);
+                    // printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, avg_ms);
+                    printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld\n", analysis_frame, avg_ms, buffer.get_num_data());
                 }
                 avg_frame = now;
             }
@@ -275,7 +278,7 @@ int main(int argc, char** argv) {
             while (!analysis_stoper);
         }
         printf("analysis thread ready...\n");
-        analysis_start = std::chrono::steady_clock::now();
+        analysis_start = clock_t::now();
 
 #ifndef DISABLE_TABLE
         MainHeader main_header;
@@ -290,7 +293,7 @@ int main(int argc, char** argv) {
                     return;
                 }
             }
-            // avg_frame = std::chrono::steady_clock::now();
+            // avg_frame = clock_t::now();
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
@@ -301,7 +304,7 @@ int main(int argc, char** argv) {
         if (likely(!is_enter)) {
             std::unique_lock lk{img_clock_locker};
             img_clock_cond.wait(lk);
-            img_clock = std::chrono::steady_clock::now();
+            img_clock = clock_t::now();
             avg_frame = img_clock;
         }
         while (!sig_flag) {
@@ -311,7 +314,7 @@ int main(int argc, char** argv) {
             std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table{};
             {
                 while (rtp_recv.check() != RTPReceiver::MAIN_HEADER);
-                avg_frame = std::chrono::steady_clock::now();
+                avg_frame = clock_t::now();
                 J2kBuf buf(&rtp_recv);
                 main_header.read(buf);
                 j2k_tile.init(main_header, buf);
@@ -394,7 +397,7 @@ int main(int argc, char** argv) {
 #ifdef DISABLE_TABLE
     long_break:
 #endif
-        analysis_finish         = std::chrono::steady_clock::now();
+        analysis_finish         = clock_t::now();
         analysis_operating_time = std::chrono::duration_cast<std::chrono::milliseconds>(analysis_finish - analysis_start).count() / 1000.0;
         printf("analysis finish\n");
     });
@@ -416,8 +419,8 @@ int main(int argc, char** argv) {
             exit(1);
         }
 
-        std::chrono::steady_clock::time_point receive_start;
-        std::chrono::steady_clock::time_point receive_finish;
+        clock_t::time_point receive_start;
+        clock_t::time_point receive_finish;
         uint32_t pre_timestamp = 0;
         uint32_t pre_TPSTAMP   = 0;
         uint32_t pre_flow      = 0;
@@ -425,7 +428,7 @@ int main(int argc, char** argv) {
         const auto pkt_inc_a   = to_duration(rf_a);
 
         printf("receive thread ready...\n");
-        receive_start    = std::chrono::steady_clock::now();
+        receive_start    = clock_t::now();
         auto packet_abs  = receive_start;
         bool is_img_init = false;
         while (!sig_flag) {
@@ -473,7 +476,7 @@ int main(int argc, char** argv) {
                 break;
             }
         }
-        receive_finish         = std::chrono::steady_clock::now();
+        receive_finish         = clock_t::now();
         receive_operating_time = std::chrono::duration_cast<std::chrono::milliseconds>(receive_finish - receive_start).count() / 1000.0;
         if (sig_flag) putc('\n', stdout);
         printf("receive finish\n");
