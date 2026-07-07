@@ -63,10 +63,11 @@ int32_t RTPReceiver::check() {
         } else {
             printf("pre: %d, seq: %d, diff: %d\n", pre_sequence, sequence, sequence - pre_sequence);
             // パケットロス発生 次の再同期ポイントまでパケットを破棄
-            if (sequence == 0) {
+            if (unlikely(sequence == 0)) {
                 num_lost_packet = ex_sequence_max - pre_sequence;
             } else {
                 num_lost_packet = sequence - (pre_sequence + 1);
+                if (num_lost_packet >= buffer->get_buffer_length()) { throw buffer_leak{"RTP seq", buffer_leak::ANALYSISING}; }
             }
             while (true) {
                 len = buffer->pop(data);
@@ -80,6 +81,7 @@ int32_t RTPReceiver::check() {
         }
     }
 }
+
 void RTPReceiver::pop(uint8_t*& ptr, size_t& len) {
     const auto hl = RTPHeader_trait::get_header_length() + J2KPayloadHeader_trait::get_header_length();
 
