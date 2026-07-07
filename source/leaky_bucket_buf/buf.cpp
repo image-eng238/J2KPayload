@@ -88,6 +88,12 @@ void leaky_bucket_buf::inspkt() {
 }
 
 int leaky_bucket_buf::pop(uint8_t*& ptr) {
+    const auto out = pop_impl(ptr);
+    if (out == 0) throw buffer_leak("empty paket popping", buffer_leak::EMPTY_POP);
+    return out;
+}
+int leaky_bucket_buf::pop_noexcept(uint8_t*& ptr) noexcept { return pop_impl(ptr); }
+int leaky_bucket_buf::pop_impl(uint8_t*& ptr) {
     auto pred = [this]() -> bool { return current_num_data > 0; };
     std::unique_lock lk(mtx, std::defer_lock);
     if constexpr (NO_BLOCKING_MTX) {
@@ -112,8 +118,6 @@ int leaky_bucket_buf::pop(uint8_t*& ptr) {
 
     link_list::advance(next_pop);
 
-    if (out == 0) { throw buffer_leak("empty paket popping", buffer_leak::EMPTY_POP); }
-    lk.unlock();
     return out;
 }
 
