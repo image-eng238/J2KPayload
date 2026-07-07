@@ -251,7 +251,6 @@ int main(int argc, char** argv) {
             ++analysis_frame;
 
             img_clock += to_duration(img_inc.load(std::memory_order_acquire));
-            img_clock -= clock_t::duration{1};
             std::this_thread::sleep_until(img_clock);
             const auto now = clock_t::now();
 #ifdef RTP_CLOCK_CHECK
@@ -382,7 +381,7 @@ int main(int argc, char** argv) {
                     size_t dest_packet = 0;
                     while (true) {
                         uint8_t* ptr;
-                        auto len = buffer.pop(ptr);
+                        auto len = buffer.pop_noexcept(ptr);
                         ++dest_packet;
                         if (J2KPayloadHeader_trait::get_MH(ptr + RTPHeader_trait::length) || sig_flag) {
                             break;
@@ -463,12 +462,12 @@ int main(int argc, char** argv) {
                 }
                 pre_TPSTAMP = TPS;
                 // メディアクロックとPTSTAMPをもとに待機時間を算出
-                packet_abs += pkt_inc_r;
-                std::this_thread::sleep_until(packet_abs);
+                // packet_abs += pkt_inc_r;
+                // std::this_thread::sleep_until(packet_abs);
             } else if (result == leaky_bucket_buf::AGAIN) {
                 // false: メディアクロックの 1/4 で待機
-                packet_abs += pkt_inc_a;
-                std::this_thread::sleep_until(packet_abs);
+                // packet_abs += pkt_inc_a;
+                // std::this_thread::sleep_until(packet_abs);
             } else if (result == leaky_bucket_buf::SIGNAL) {
                 img_clock_cond.notify_one();
                 break;
@@ -501,6 +500,20 @@ int main(int argc, char** argv) {
             exit(1);
         }
     }
+    // sched_param sched;
+    // sched.sched_priority = 80;
+    // if (CPU_COUNT(&affinity) != 0) {
+    //     if (pthread_setschedparam(receive_thread.native_handle(), SCHED_FIFO, &sched) != 0) {
+    //         perror("pthread_setschedparams");
+    //         exit(1);
+    //     }
+    // }
+    // if (CPU_COUNT(&affinity_analysis) != 0) {
+    //     if (pthread_setschedparam(analysis_thread.native_handle(), SCHED_FIFO, &sched) != 0) {
+    //         perror("pthread_setschedparam");
+    //         exit(1);
+    //     }
+    // }
 
     if (unlikely(is_enter)) {
         printf("Press Enter to continue\n");
