@@ -37,7 +37,7 @@ include_directories(./source)
 
 # executes
 add_executable(j2kpay main.cpp)
-target_link_libraries(j2kpay CodeStream Decoding LeakyBucket)
+target_link_libraries(j2kpay CodeStream Decoding LeakyBucket RTP_header)
 
 add_executable(RTPsender RTPsender.cpp)
 add_executable(RTPsender2 RTPsender2.cpp)
