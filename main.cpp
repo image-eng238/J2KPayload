@@ -44,7 +44,7 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 
 constexpr size_t MAX_PACKET_SIZE = 1384;
 sig_atomic_t sig_flag            = 0;
-void sig_handler(int sig_num) {
+void sig_handler(int sig_num [[maybe_unused]]) {
     sig_flag = 1;
 }
 
@@ -252,8 +252,8 @@ int main(int argc, char** argv) {
 
             img_clock += to_duration(img_inc.load(std::memory_order_acquire));
             std::this_thread::sleep_until(img_clock);
-            const auto now    = clock_t::now();
-            const auto jitter = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(now - img_clock).count();
+            const auto now                     = clock_t::now();
+            [[maybe_unused]] const auto jitter = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(now - img_clock).count();
 #ifdef RTP_CLOCK_CHECK
             if (debug_clock_it != debug_clock_it_end) *debug_clock_it = now;
             ++debug_clock_it;
@@ -261,15 +261,17 @@ int main(int argc, char** argv) {
             if (out_flame != 0 && analysis_frame % out_flame == 0) {
                 auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
                 if (output_format == OutF::FPS) {
-                    const auto avg_fps = 1 / ((static_cast<float>(avg.count()) / 1000) / out_flame) * 1000;
+                    const auto avg_fps = 1 / ((static_cast<double>(avg.count()) / 1000) / out_flame) * 1000;
                     sum_avg += avg_fps;
                     // printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
-                    printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_fps, buffer.get_num_data(), jitter);
+                    printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld\n", analysis_frame, avg_fps, buffer.get_num_data());
+                    // printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_fps, buffer.get_num_data(), jitter);
                 } else if (output_format == OutF::MS) {
-                    const auto avg_ms = (static_cast<float>(avg.count()) / out_flame) / 1000;
+                    const auto avg_ms = (static_cast<double>(avg.count()) / out_flame) / 1000;
                     sum_avg += avg_ms;
                     // printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, avg_ms);
-                    printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_ms, buffer.get_num_data(), jitter);
+                    printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld\n", analysis_frame, avg_ms, buffer.get_num_data());
+                    // printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_ms, buffer.get_num_data(), jitter);
                 }
                 avg_frame = now;
             }
@@ -346,8 +348,10 @@ int main(int argc, char** argv) {
                                 [&](const uint8_t* data) { return RTPHeader_trait::get_M(data); },
                                 [&](const uint8_t* data) { rtp_recv.set_last_sequence_number(J2KPayloadHeader_trait::get_extended_sequence_number(data)); }
                             );
-                            fprintf(stderr, "dest frame\n");
+                            const auto post_in_buf = buffer.get_num_data();
+                            fprintf(stderr, "  frame discarded by clockskew analysis_frame: %ld, in buf: %ld -> %ld\n", analysis_frame, in_buf, post_in_buf);
                             ++loss_frame;
+                        } else if (in_buf < size_t(1360 * 0.75)) {
                         }
                     } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス
                         PID                  = rtp_recv.get_PID();
