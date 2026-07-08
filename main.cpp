@@ -187,6 +187,7 @@ int main(int argc, char** argv) {
     clock_t::time_point avg_frame;
     size_t analysis_frame          = 0;
     size_t loss_frame              = 0;
+    size_t interpolate_frame       = 0;
     uint32_t frame_lost_precinct   = 0;
     size_t RTP_error_count         = 0;
     size_t J2K_error_count         = 0;
@@ -352,6 +353,8 @@ int main(int argc, char** argv) {
                             fprintf(stderr, "  frame discarded by clockskew analysis_frame: %ld, in buf: %ld -> %ld\n", analysis_frame, in_buf, post_in_buf);
                             ++loss_frame;
                         } else if (in_buf < size_t(1360 * 0.75)) {
+                            frame_update();
+                            ++interpolate_frame;
                         }
                     } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス
                         PID                  = rtp_recv.get_PID();
@@ -542,6 +545,7 @@ int main(int argc, char** argv) {
         printf("average fps: %Lfms\n", sum_avg / (analysis_frame / out_flame));
     }
     printf("analysis frame: %ld\n", analysis_frame);
+    printf("interpolate  frame: %ld\n", interpolate_frame);
     printf("lost frame: %ld\n", loss_frame);
     printf("lost packets: %ld/%ld\n", sum_lost_packet, analysis_frame * 1360);
     printf("packet loss rate: %lf%%\n", (sum_lost_packet / (analysis_frame * 1360.0)) * 100);
