@@ -340,7 +340,15 @@ int main(int argc, char** argv) {
                             frame_update();
                         }
                     } else if (recv_result == RTPReceiver::MAIN_HEADER) { // メインパケット出現
-                        ;
+                        const auto in_buf = buffer.get_num_data();
+                        if (in_buf > 1360 * 3) {
+                            buffer.dest(
+                                [&](const uint8_t* data) { return RTPHeader_trait::get_M(data); },
+                                [&](const uint8_t* data) { rtp_recv.set_last_sequence_number(J2KPayloadHeader_trait::get_extended_sequence_number(data)); }
+                            );
+                            fprintf(stderr, "dest frame\n");
+                            ++loss_frame;
+                        }
                     } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス
                         PID                  = rtp_recv.get_PID();
                         size_t loss_precinct = 0;
@@ -378,15 +386,9 @@ int main(int argc, char** argv) {
                     const auto in_buf = buffer.get_num_data();
                     fputs(e.what(), stderr);
                     fflush(stderr);
-                    size_t dest_packet = 0;
-                    while (true) {
-                        uint8_t* ptr;
-                        auto len = buffer.pop_noexcept(ptr);
-                        ++dest_packet;
-                        if (J2KPayloadHeader_trait::get_MH(ptr + RTPHeader_trait::length) || sig_flag) {
-                            break;
-                        }
-                    }
+                    const size_t dest_packet = buffer.dest(
+                        [&](const uint8_t* const data) { return J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length) || sig_flag; }
+                    );
                     fprintf(stderr, ": buffer leak error analysis_frame: %ld, discarded packsts: %ld, in buf: %ld\n", analysis_frame, dest_packet, in_buf);
                     ++loss_frame;
                     ++J2K_error_count;
