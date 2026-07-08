@@ -267,6 +267,7 @@ public:
     void pop(uint8_t*&, size_t&);
 
     uint32_t get_last_sequence_number() const { return pre_sequence_number; }
+    void set_last_sequence_number(const uint32_t in) { pre_sequence_number = in; }
     uint32_t get_lost_packet() const { return num_lost_packet; }
     uint32_t get_PID() const { return PID; }
     bool EOC() const { return is_EOC; }
