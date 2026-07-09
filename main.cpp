@@ -353,7 +353,10 @@ int main(int argc, char** argv) {
                             fprintf(stderr, "  frame discarded by clockskew analysis_frame: %ld, in buf: %ld -> %ld\n", analysis_frame, in_buf, post_in_buf);
                             ++loss_frame;
                         } else if (in_buf < size_t(1360 * 0.75)) {
+                            const auto in_buf = buffer.get_num_data();
                             frame_update();
+                            const auto post_in_buf = buffer.get_num_data();
+                            fprintf(stderr, "  frame interpolation by clockskew analysis_frame: %ld, in buf: %ld -> %ld\n", analysis_frame, in_buf, post_in_buf);
                             ++interpolate_frame;
                         }
                     } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス
