@@ -47,6 +47,7 @@ public:
     constexpr void set_udp(UDPReceiver* const);
     int receive();
     void inspkt();
+    void push(const uint8_t* const, int);
     int pop(uint8_t*&);
     int pop_noexcept(uint8_t*&) noexcept;
     void clear();
@@ -60,15 +61,15 @@ public:
         return (current_num_data + tmp_num_data == 0) && (next_write->serial_number == next_pop->serial_number);
     }
     size_t get_num_data_unsafe() const { return current_num_data + tmp_num_data; }
-    const link_list* get_last_packet() const { return last_receive; }
+    const link_list* get_last_packet() const { return last_write; }
     size_t get_buffer_length() const { return buffer_length; }
 
 private:
     int pop_impl(uint8_t*&);
-    link_list* next_write;   // receive からのみアクセス
-    link_list* next_pop;     // pop からのみアクセス
-    link_list* last_receive; // おそらく receive からのみアクセス
-    UDPReceiver* udp;        // receive のみからアクセス
+    link_list* next_write; // receive からのみアクセス
+    link_list* next_pop;   // pop からのみアクセス
+    link_list* last_write; // おそらく receive からのみアクセス
+    UDPReceiver* udp;      // receive のみからアクセス
 
     size_t current_num_data; // 双方からアクセス 同期処理を行う
     size_t tmp_num_data;     // 受信スレッドで mutex の取得ができないときに受信したデータ数を記録
