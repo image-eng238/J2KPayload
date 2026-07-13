@@ -4,13 +4,16 @@
 
 #include <array>
 #include <memory>
+#include <charconv>
 
 int main(int argc, char** argv) {
     std::string_view rtp_file;
+    size_t pickup_frame = 0;
     {
         using namespace tklib;
         static constexpr argument_list args_list(
             {{'r', "rtp_file", "The .rtp file source of packet to parse"},
+             {'p', "picup", "Picup frame"},
              {'h', "help", "Show this"}}
         );
         argument_t args{argc, argv, args_list};
@@ -19,6 +22,10 @@ int main(int argc, char** argv) {
                 case args_list('r'):
                     rtp_file = args.pop();
                     break;
+                case args_list('p'): {
+                    const auto tmp = args.pop();
+                    std::from_chars(tmp.begin(), tmp.end(), pickup_frame);
+                } break;
                 case args_list('h'):
                     args_list.print_arg();
                     exit(0);
@@ -37,7 +44,14 @@ int main(int argc, char** argv) {
     leaky_bucket_buf buffer(nullptr, packet_buffer, PACKET_BUFFER_LENGTH);
     RTPReceiver rtp_recv(&buffer);
 
-    for (size_t i = 0; i < rtpf.num_packet();) {
+    const size_t packet_in_frame = [&] {
+        size_t n = 0;
+        while (!RTPHeader_trait::get_M(rtpf.get_pkt(n++).data()));
+        return n;
+    }();
+    pickup_frame = pickup_frame * packet_in_frame;
+
+    for (size_t i = 0; i < std::min(rtpf.num_packet(), pickup_frame + packet_in_frame);) {
         {
             packet_t pkt;
             do {
@@ -66,6 +80,7 @@ int main(int argc, char** argv) {
                 ++table_index;
             }
         }
+        assert(table_index == j2k_packet_table.size());
     }
     return 0;
 }
