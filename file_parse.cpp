@@ -58,18 +58,12 @@ int main(int argc, char** argv) {
 
         uint32_t PID       = 0;
         size_t table_index = 0;
-        while (true) {
+        while (!rtp_recv.EOC()) {
             rtp_recv.check();
             PID = rtp_recv.get_PID();
-            J2kBuf buf(&rtp_recv);
-            while (true) {
-                if (j2k_packet_table[table_index].PID == PID) break;
+            while (j2k_packet_table[table_index].PID != PID) {
                 j2k_packet_table[table_index].read_packet(buf);
                 ++table_index;
-            }
-            if (rtp_recv.EOC()) {
-                table_index = 0;
-                break;
             }
         }
     }

@@ -4,6 +4,7 @@ int32_t RTPReceiver::first_check() {
     using namespace RTPHeader_trait;
     using namespace J2KPayloadHeader_trait;
     const auto hl = RTPHeader_trait::get_header_length();
+    pos           = 0;
 
     while (true) {
         auto& data = packets[0].data;
@@ -16,8 +17,8 @@ int32_t RTPReceiver::first_check() {
         pre_sequence_number = sequence;
 
         if (likely(get_MH(data + hl))) { // メインヘッダ出現
-            assert(num_packets == 1);
-            cache = {};
+            num_packets = 1;
+            cache       = {};
             return this->MAIN_HEADER;
         }
     }
@@ -89,12 +90,16 @@ void RTPReceiver::pop(uint8_t*& ptr, size_t& len) {
         if (unlikely(!(pos < num_packets))) { throw buffer_leak("out range"); }
         const auto& pkt = packets[pos++];
         ptr             = pkt.data + hl;
-        if (pos != num_packets) {
-            if (unlikely(J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()))) { throw buffer_leak("ORDB"); }
+        if (unlikely(J2KPayloadHeader_trait::get_MH(pkt.data + RTPHeader_trait::get_header_length()))) {
             len = static_cast<size_t>(pkt.len - hl);
         } else {
-            if (unlikely(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()))) { throw buffer_leak("ORDB"); }
-            len = J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
+            if (pos != num_packets) {
+                if (unlikely(J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()))) { throw buffer_leak("ORDB"); }
+                len = static_cast<size_t>(pkt.len - hl);
+            } else {
+                if (unlikely(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()))) { throw buffer_leak("ORDB"); }
+                len = J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
+            }
         }
     } else {
         ptr   = cache.data + hl + J2KPayloadHeader_trait::get_body_POS(cache.data + RTPHeader_trait::get_header_length());
