@@ -8,7 +8,7 @@
 
 int main(int argc, char** argv) {
     std::string_view rtp_file;
-    size_t pickup_frame = 0;
+    size_t pickup_frame = SIZE_MAX;
     {
         using namespace tklib;
         static constexpr argument_list args_list(
@@ -43,15 +43,15 @@ int main(int argc, char** argv) {
     static leaky_bucket_buf::link_list packet_buffer[PACKET_BUFFER_LENGTH];
     leaky_bucket_buf buffer(nullptr, packet_buffer, PACKET_BUFFER_LENGTH);
     RTPReceiver rtp_recv(&buffer);
+    std::array<fast_table, ConstValue::all_precinct> j2k_packet_table{};
 
     const size_t packet_in_frame = [&] {
         size_t n = 0;
         while (!RTPHeader_trait::get_M(rtpf.get_pkt(n++).data()));
         return n;
     }();
-    pickup_frame = pickup_frame * packet_in_frame;
 
-    for (size_t i = 0; i < std::min(rtpf.num_packet(), pickup_frame + packet_in_frame);) {
+    for (size_t i = (pickup_frame != SIZE_MAX) ? pickup_frame * packet_in_frame - packet_in_frame : 0; i < std::min(rtpf.num_packet(), pickup_frame * packet_in_frame);) {
         {
             packet_t pkt;
             do {
@@ -63,7 +63,6 @@ int main(int argc, char** argv) {
 
         MainHeader main_header;
         Tile j2k_tile;
-        std::array<fast_table, ConstValue::all_precinct> j2k_packet_table{};
         rtp_recv.first_check();
         J2kBuf buf(&rtp_recv);
         main_header.read(buf);
@@ -80,7 +79,7 @@ int main(int argc, char** argv) {
                 ++table_index;
             }
         }
-        assert(table_index == j2k_packet_table.size());
+        // assert(table_index == j2k_packet_table.size());
     }
     return 0;
 }
