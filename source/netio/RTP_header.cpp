@@ -30,11 +30,14 @@ int32_t RTPReceiver::check() {
     const auto hl = RTPHeader_trait::get_header_length();
 
     cache = packets[num_packets - 1];
+    if (unlikely(is_EOC)) {
+        is_EOC = false;
+        return this->SUCCESS;
+    }
 
     pos          = 0;
     num_packets  = 0;
     uint8_t rpos = 0;
-    if (unlikely(is_EOC)) is_EOC = false;
 
     while (true) {
         auto& data = packets[rpos].data;

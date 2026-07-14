@@ -339,6 +339,11 @@ int main(int argc, char** argv) {
                         }
                         // assert(buf.empty());
                         if (unlikely(rtp_recv.EOC())) { // フレーム終了
+                            const auto tmp = rtp_recv.check();
+                            assert(tmp == RTPReceiver::SUCCESS);
+                            for (; table_index < j2k_packet_table.size(); ++table_index) {
+                                j2k_packet_table[table_index].read_packet(buf);
+                            }
                             table_index = 0;
                             frame_update();
                         }

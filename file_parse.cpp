@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
         static constexpr argument_list args_list(
             {{'r', "rtp_file", "The .rtp file source of packet to parse"},
              {'p', "picup", "Picup frame"},
-             {'w', "write", "write codestream"},
+             {'w', "write", "Write codestream"},
              {'h', "help", "Show this"}}
         );
         argument_t args{argc, argv, args_list};
@@ -87,7 +87,13 @@ int main(int argc, char** argv) {
                     j2k_packet_table[table_index].read_packet(buf);
                     ++table_index;
                 }
-                if (rtp_recv.EOC()) break;
+                if (rtp_recv.EOC()) {
+                    rtp_recv.check();
+                    for (; table_index < j2k_packet_table.size(); ++table_index) {
+                        j2k_packet_table[table_index].read_packet(buf);
+                    }
+                    break;
+                }
             }
             // assert(table_index == j2k_packet_table.size());}
         }
