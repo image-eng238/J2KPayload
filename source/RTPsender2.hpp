@@ -251,7 +251,7 @@ private:
 class packet_sender {
 public:
     packet_sender(std::string_view addr, uint16_t port)
-        : udp{addr.data(), port}, send_call{}, lost_packet{}, ignore_count{}, sent_frame{}, out_frame{}, sum_avg{}, data_fps{}, adv_sleep_v{}, sleep_v{} {}
+        : udp{addr.data(), port}, send_call{}, sent_f_packet{}, lost_packet{}, ignore_count{}, sent_frame{}, out_frame{}, sum_avg{}, data_fps{}, adv_sleep_v{}, sleep_v{} {}
 
     bool send(const packet_t& pkt) {
         ++send_call;
@@ -266,6 +266,7 @@ public:
         }
         if (RTPHeader_trait::get_M(pkt.data())) {
             ++sent_frame;
+            sent_f_packet = send_call;
             std::this_thread::sleep_until(sleep_v += adv_sleep_v);
             if (sent_frame % out_frame == 0) {
                 const auto now_time = std::chrono::steady_clock::now();
@@ -290,13 +291,16 @@ public:
     }
     void set_sleep_v() { prev_time = sleep_v = std::chrono::steady_clock::now(); }
     void clear() {
-        send_call   = 0;
-        lost_packet = 0;
-        sent_frame  = 0;
-        sum_avg     = 0;
+        send_call     = 0;
+        sent_f_packet = 0;
+        lost_packet   = 0;
+        sent_frame    = 0;
+        sum_avg       = 0;
     }
 
     size_t get_call() const { return send_call; }
+    auto get_sent_frame() const { return sent_frame; }
+    auto get_fpkt() const { return send_call - sent_f_packet; }
 
     void print_result() {
         printf("========================================\n");
@@ -310,6 +314,7 @@ public:
 private:
     UDPSender udp;
     size_t send_call;
+    size_t sent_f_packet;
     size_t lost_packet;
     size_t ignore_count;
     size_t sent_frame;

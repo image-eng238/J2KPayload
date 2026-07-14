@@ -187,14 +187,14 @@ RestartTheLoop:
                         pktos.write(pkt);
                         print2pager([&](FILE* fp) {
                             size_t num_pkt = udp.get_call();
-                            fprintf(fp, "packet[%ld] <-\nframe = %ld\nsize = %ld\n", num_pkt % packet_in_frame + 1, num_pkt / packet_in_frame + 1, pkt.size());
+                            fprintf(fp, "packet[%ld] <- next send\nframe = %ld\nsize = %ld\n", udp.get_fpkt() + 1, udp.get_sent_frame() + 1, pkt.size());
                             RTPHeader_trait::print_info(fp, pkt.data());
                             J2KPayloadHeader_trait::print_info(fp, pkt.data());
                             putc('\n', fp);
                             for (size_t iS = 1; iS < cli.optn(); ++iS) {
                                 const auto pos      = (++num_pkt < rtpfile.num_packet()) ? num_pkt : 0 + iS;
                                 const packet_t pktS = rtpfile.get_pkt(pos);
-                                fprintf(fp, "packet[%ld]\nframe = %ld\nsize = %ld\n", pos % packet_in_frame + 1, pos / packet_in_frame + 1, pktS.size());
+                                fprintf(fp, "packet[%ld]\nframe = %ld\nsize = %ld\n", udp.get_fpkt() + 1 + iS, udp.get_sent_frame() + 1, pktS.size());
                                 RTPHeader_trait::print_info(fp, pktS.data());
                                 J2KPayloadHeader_trait::print_info(fp, pktS.data());
                                 putc('\n', fp);
@@ -211,11 +211,10 @@ RestartTheLoop:
                         cli.set_ignore(cr);
                     } break;
                     case 'e': { // EOC
-                        size_t ce;
-                        for (ce = 0;
-                             !RTPHeader_trait::get_M(rtpfile.get_pkt(p + ce).data());
-                             ++ce);
-                        cli.set_ignore(1 + ce + packet_in_frame * (cli.optn() - 1));
+                        size_t ce = 0;
+                        for (size_t i = 0; i < cli.optn(); ++i, ++ce)
+                            for (; !RTPHeader_trait::get_M(rtpfile.get_pkt(p + ce).data()); ++ce);
+                        cli.set_ignore(ce);
                     } break;
                     case 'R':
                         pktos.to_base();
