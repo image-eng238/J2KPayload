@@ -76,7 +76,7 @@ using packet_t = pointer_with_length<uint8_t>;
 
 class RTP_file {
 public:
-    RTP_file() : codestream{}, packets{}, siz{} {};
+    RTP_file() : codestream{}, packets{}, siz{}, frames{} {};
     RTP_file(const char* file_path) : RTP_file{} {
         if (!load(file_path)) {
             fprintf(stderr, "can`t load file: '%s'\n", file_path);
@@ -104,19 +104,30 @@ public:
             }
             const size_t pktsiz = (pktdata[2] << 8) | pktdata[3];
             packets.push_back(packet_t{pktdata + hd, pktsiz});
+            if (RTPHeader_trait::get_M(packets.back().data())) ++frames;
             i += pktsiz + hd;
         }
         return true;
+    }
+    size_t pickup_frame(size_t f) const {
+        if (f == 0) return 0;
+        if (f < frames) f = frames;
+        size_t i = 0, j = 0;
+        for (; i != f - 1; ++i)
+            for (; !RTPHeader_trait::get_M(packets[j].data()); ++j);
+        return j + 1;
     }
     auto get_pkt(size_t i) const { return packets[i]; }
     auto& front() { return packets.front(); }
     auto& back() { return packets.back(); }
     auto num_packet() const { return packets.size(); }
+    auto num_frame() const { return frames; }
 
 private:
     std::unique_ptr<uint8_t[]> codestream;
     std::vector<packet_t> packets;
     uintmax_t siz;
+    size_t frames;
 };
 
 class cli_parser {

@@ -53,6 +53,8 @@ int main(int argc, char** argv) {
     RTPReceiver rtp_recv(&buffer);
     std::array<fast_table, ConstValue::all_precinct> j2k_packet_table{};
 
+    size_t nowf = 0;
+
     const size_t packet_in_frame = [&] {
         size_t n = 0;
         while (!RTPHeader_trait::get_M(rtpf.get_pkt(n++).data()));
@@ -68,6 +70,7 @@ int main(int argc, char** argv) {
                     buffer.push(pkt.data(), pkt.size());
                     ++i;
                 } while (!RTPHeader_trait::get_M(pkt.data()));
+                nowf++;
             }
 
             MainHeader main_header;
@@ -103,16 +106,13 @@ int main(int argc, char** argv) {
             std::cerr << "can't open file: '" << write_file << "'" << std::endl;
             exit(1);
         }
-        packet_t pkt;
         const auto hd = RTPHeader_trait::get_header_length() + J2KPayloadHeader_trait::get_header_length();
-        for (size_t i = (pickup_frame != SIZE_MAX) ? pickup_frame * packet_in_frame - packet_in_frame : 0; i < std::min(rtpf.num_packet(), pickup_frame * packet_in_frame);) {
-            do {
-                pkt = rtpf.get_pkt(i);
-                buffer.push(pkt.data(), pkt.size());
-                ++i;
-                wfile.write(reinterpret_cast<const char*>(pkt.data()) + hd, pkt.size() - hd);
-            } while (!RTPHeader_trait::get_M(pkt.data()));
-        }
+        packet_t pkt;
+        auto i = rtpf.pickup_frame(pickup_frame);
+        do {
+            pkt = rtpf.get_pkt(i++);
+            wfile.write(reinterpret_cast<const char*>(pkt.data()) + hd, pkt.size() - hd);
+        } while (!RTPHeader_trait::get_M(pkt.data()));
     }
     return 0;
 }
