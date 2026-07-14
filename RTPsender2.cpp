@@ -21,6 +21,7 @@ r: rsync, 次の再同期ポイントまで送信
 e: EOC, EOCが出現するまで送信
 
 <number> unnecessary
+f: 現在のフレームのデータを確認
 R: restart, 再起動
 h: help, ヘルプ
 q: quit, 終了
@@ -171,7 +172,7 @@ RestartTheLoop:
     for (size_t i = 0; i < number_of_loop; ++i) {
         for (size_t p = 0; p < rtpfile.num_packet();) {
             auto pkt = rtpfile.get_pkt(p);
-            if (cli.read_line(std::to_string(udp.get_call()).data())) {
+            if (cli.read_line((std::to_string(udp.get_sent_frame()) + ":" + std::to_string(udp.get_fpkt())).data())) {
                 switch (auto c = cli.optc(); c) {
                     case 's': // send
                         cli.set_ignore(cli.optn());
@@ -202,6 +203,34 @@ RestartTheLoop:
                         });
                         continue;
                     }
+                    case 'f': {
+                        print2pager([&](FILE* fp) {
+                            const auto hd = RTPHeader_trait::get_header_length();
+                            packet_t pkt;
+                            size_t num_resync  = 0;
+                            size_t sent_resync = 0;
+                            size_t i           = udp.get_sent_f_packet();
+                            do {
+                                pkt = rtpfile.get_pkt(i++);
+                                if (!J2KPayloadHeader_trait::get_MH(pkt.data() + hd) && J2KPayloadHeader_trait::get_body_ORDB(pkt.data() + hd)) {
+                                    ++num_resync;
+                                    if (i <= udp.get_call()) sent_resync = num_resync;
+                                }
+
+                            } while (!RTPHeader_trait::get_M(pkt.data()));
+
+                            fprintf(
+                                fp,
+                                "frame: %ld/%ld\n"
+                                "resync point: %ld/%ld\n"
+                                "packet: %ld/%ld\n",
+                                udp.get_sent_frame(), rtpfile.num_frame(),
+                                sent_resync, num_resync,
+                                udp.get_fpkt(), i - udp.get_sent_f_packet()
+                            );
+                        });
+                        continue;
+                    }
                     case 'r': { // rsync
                         size_t cr = 0;
                         for (size_t i = 0; i < cli.optn(); ++i, ++cr) {
@@ -229,6 +258,7 @@ RestartTheLoop:
                             fprintf(fp, "l: loss n packets\n");
                             fprintf(fp, "c: change sequence to n\n");
                             fprintf(fp, "v: view the data of n pakcets\n");
+                            fprintf(fp, "f: show frame data\n");
                             fprintf(fp, "r: send to rsync point\n");
                             fprintf(fp, "e: send to EOC\n");
                             fprintf(fp, "R: restart\n");

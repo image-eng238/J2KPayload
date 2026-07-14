@@ -300,6 +300,7 @@ public:
 
     size_t get_call() const { return send_call; }
     auto get_sent_frame() const { return sent_frame; }
+    auto get_sent_f_packet() const { return sent_f_packet; }
     auto get_fpkt() const { return send_call - sent_f_packet; }
 
     void print_result() {
