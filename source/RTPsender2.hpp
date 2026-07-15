@@ -111,11 +111,11 @@ public:
     }
     size_t pickup_frame(size_t f) const {
         if (f == 0) return 0;
-        if (f < frames) f = frames;
+        if (f > frames) f = frames;
         size_t i = 0, j = 0;
-        for (; i != f - 1; ++i)
+        for (; i != f - 1; ++i, ++j)
             for (; !RTPHeader_trait::get_M(packets[j].data()); ++j);
-        return j + 1;
+        return j;
     }
     auto get_pkt(size_t i) const { return packets[i]; }
     auto& front() { return packets.front(); }
