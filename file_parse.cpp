@@ -101,7 +101,7 @@ int main(int argc, char** argv) {
             // assert(table_index == j2k_packet_table.size());}
         }
     } else {
-        wfile.open(write_file.data());
+        wfile.open(write_file.data(), std::ios::out);
         if (!wfile.is_open()) {
             std::cerr << "can't open file: '" << write_file << "'" << std::endl;
             exit(1);
