@@ -22,6 +22,7 @@ e: EOC, EOCが出現するまで送信
 
 <number> unnecessary
 f: 現在のフレームのデータを確認
+E: 終了用のパケットを送信
 R: restart, 再起動
 h: help, ヘルプ
 q: quit, 終了
@@ -252,6 +253,11 @@ RestartTheLoop:
                         udp.clear();
                         udp.set_sleep_v();
                         goto RestartTheLoop;
+                    case 'E': {
+                        uint8_t buf = 0;
+                        udp.send({&buf, 1});
+                        goto EndTheLoop;
+                    }
                     case 'h': { // help
                         print2pager([](FILE* fp) {
                             fprintf(fp, "s: send n packets\n");
@@ -262,6 +268,7 @@ RestartTheLoop:
                             fprintf(fp, "r: send to rsync point\n");
                             fprintf(fp, "e: send to EOC\n");
                             fprintf(fp, "R: restart\n");
+                            fprintf(fp, "E: send a termination packet\n");
                             fprintf(fp, "h: help\n");
                             fprintf(fp, "q: quit\n");
                         });
