@@ -344,6 +344,8 @@ int main(int argc, char** argv) {
                             for (; table_index < j2k_packet_table.size(); ++table_index) {
                                 j2k_packet_table[table_index].read_packet(buf);
                             }
+                            const auto last = buf.get_byte(2);
+                            assert(last == j2kmk::EOC);
                             table_index = 0;
                             frame_update();
                         }
@@ -399,16 +401,20 @@ int main(int argc, char** argv) {
                 } catch (buffer_leak& e) {
                     // buffer.clear();
                     const auto in_buf = buffer.get_num_data();
+                    bool is_terminate = false;
                     fputs(e.what(), stderr);
                     fflush(stderr);
                     const size_t dest_packet = buffer.dest(
-                        [&](const uint8_t* const data) { return J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length) || sig_flag; }
+                        [&](const uint8_t* const data) { return J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length) ||
+                                                                RTPHeader_trait::get_V(data) != 0b10; },
+                        [&](const uint8_t* const data) { is_terminate = RTPHeader_trait::get_V(data) != 0b10; }
                     );
                     fprintf(stderr, ": buffer leak error analysis_frame: %ld, discarded packsts: %ld, in buf: %ld\n", analysis_frame, dest_packet, in_buf);
                     ++loss_frame;
                     ++J2K_error_count;
                     table_index = 0;
                     ++error_counts[e.type];
+                    if (is_terminate) break;
                 }
         }
 #ifdef DISABLE_TABLE
@@ -502,7 +508,10 @@ int main(int argc, char** argv) {
         printf("again:   %ld\n", count_again);
         printf("receive probability: %lf%% \n", static_cast<double>(count_receive) / static_cast<double>(count_receive + count_again) * 100);
 #endif
-        buffer.inspkt();
+        {
+            uint8_t tb = 0;
+            buffer.push(&tb, 1);
+        }
     });
 
     if (CPU_COUNT(&affinity) != 0) {
