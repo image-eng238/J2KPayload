@@ -74,41 +74,38 @@ int main(int argc, char** argv) {
 
     {
         using namespace tklib;
-        static constexpr argument_list args_list(
-            {{'a', "address", "IPv4 address default: 127.0.0.1"},
-             {'p', "port", "Port default: 50001"},
-             {'f', "frame", "The interval between frames to display default: 60"},
-             {'c', "receive_affinity", "CPU affinity of the receive thread"},
-             {'C', "analysis_affinity", "CPU affinity of the analysis thread"},
-             {'b', "BufferLength", "Receive buffer length, default: 13600, max: 13600"},
-             {0, "ReceiveFrequency", "The multiplier for the receiving thread frequency (90kHz). Fromat: \"receive:again\",default: 0.5:0.25"},
-             {0, "Enter", "analysis thread continue at enter"},
-             {0, "OutputFormat", "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
+        static constexpr argument_list opts(
+            optspec_t{'a', "address", true, "IPv4 address default: 127.0.0.1"},
+            optspec_t{'p', "port", true, "Port default: 50001"},
+            optspec_t{'f', "frame", true, "The interval between frames to display default: 60"},
+            optspec_t{'c', "receive_affinity", true, "CPU affinity of the receive thread"},
+            optspec_t{'C', "analysis_affinity", true, "CPU affinity of the analysis thread"},
+            optspec_t{'b', "BufferLength", true, "Receive buffer length, default: 13600, max: 13600"},
+            optspec_t{0, "ReceiveFrequency", true, "The multiplier for the receiving thread frequency (90kHz). Fromat: \"receive:again\",default: 0.5:0.25"},
+            optspec_t{0, "Enter", false, "analysis thread continue at enter"},
+            optspec_t{0, "OutputFormat", true, "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
 #ifdef RTP_CLOCK_CHECK
-             {0, "ClockCheckSize", "Number of frames to verify the clock rate. default: 120"},
+            optspec_t{0, "ClockCheckSize", true, "Number of frames to verify the clock rate. default: 120"},
 #endif
-             {'h', "help", "Show this"}}
+            optspec_t{'h', "help", false, "Show this"}
         );
-        static_assert(args_list.check());
-        argument_t args(argc, argv, args_list);
-        while (!args.empty()) {
-            switch (args.get_opt()) {
-                case args_list('a'):
-                    addr = args.pop();
+        argument_t args(argc, argv, opts);
+        while (args.can_parse()) {
+            switch (args.getopt()) {
+                case opts('a'):
+                    addr = args.get_str();
                     break;
-                case args_list('p'): {
-                    auto tmp = args.pop();
-                    std::from_chars(tmp.begin(), tmp.end(), port);
-                } break;
-                case args_list('f'): {
-                    auto tmp = args.pop();
-                    std::from_chars(tmp.begin(), tmp.end(), out_flame);
-                } break;
-                case args_list('c'): {
+                case opts('p'):
+                    if (auto tmp = args.get_value<uint16_t>(); tmp) port = tmp.value();
+                    break;
+                case opts('f'):
+                    if (auto tmp = args.get_value<size_t>(); tmp) out_flame = tmp.value();
+                    break;
+                case opts('c'): {
                     size_t cpu_bit_mask = 0;
-                    auto tmp            = args.pop();
-                    if (std::from_chars(tmp.begin(), tmp.end(), cpu_bit_mask, 16).ptr == tmp.end()) {
-                        size_t i = 0;
+                    if (auto tmp = args.get_value<size_t>(); tmp) {
+                        cpu_bit_mask = tmp.value();
+                        size_t i     = 0;
                         while (cpu_bit_mask != 0) {
                             if (cpu_bit_mask & 0x1)
                                 CPU_SET(i, &affinity);
@@ -117,11 +114,11 @@ int main(int argc, char** argv) {
                         }
                     }
                 } break;
-                case args_list('C'): {
+                case opts('C'): {
                     size_t cpu_bit_mask = 0;
-                    auto tmp            = args.pop();
-                    if (std::from_chars(tmp.begin(), tmp.end(), cpu_bit_mask, 16).ptr == tmp.end()) {
-                        size_t i = 0;
+                    if (auto tmp = args.get_value<size_t>(); tmp) {
+                        cpu_bit_mask = tmp.value();
+                        size_t i     = 0;
                         while (cpu_bit_mask != 0) {
                             if (cpu_bit_mask & 0x1)
                                 CPU_SET(i, &affinity_analysis);
@@ -130,30 +127,26 @@ int main(int argc, char** argv) {
                         }
                     }
                 } break;
-                case args_list('b'): {
-                    auto tmp = args.pop();
-                    std::from_chars(tmp.begin(), tmp.end(), buffer_length);
-                    if (buffer_length > MAX_BUFFER_LENGTH) {
-                        fprintf(stderr, "-b: the maximum value is %ld\n", MAX_BUFFER_LENGTH);
-                        exit(1);
+                case opts('b'): {
+                    if (auto tmp = args.get_value<size_t>(); tmp) {
+                        buffer_length = tmp.value();
+                        if (buffer_length > MAX_BUFFER_LENGTH) {
+                            fprintf(stderr, "-b: the maximum value is %ld\n", MAX_BUFFER_LENGTH);
+                            exit(1);
+                        }
                     }
                 } break;
-                case args_list("ReceiveFrequency"): {
-                    auto tmp = args.pop();
-                    auto cp  = tmp.find_first_of(':');
-                    if (cp != std::string_view::npos) {
-                        std::string_view tmp_r = tmp.substr(0, cp);
-                        std::string_view tmp_a = tmp.substr(cp + 1);
-                        std::from_chars(tmp_r.begin(), tmp_r.end(), rf_r);
-                        std::from_chars(tmp_a.begin(), tmp_a.end(), rf_a);
+                case opts("ReceiveFrequency"):
+                    if (auto tmp = args.get_interval<double>(':'); tmp) {
+                        rf_r = tmp->first;
+                        rf_a = tmp->last;
                     }
-
-                } break;
-                case args_list("Enter"):
+                    break;
+                case opts("Enter"):
                     is_enter = true;
                     break;
-                case args_list("OutputFormat"): {
-                    const auto tmp = args.pop();
+                case opts("OutputFormat"): {
+                    const auto tmp = args.get_str();
                     if (tmp == "fps") {
                         output_format = OutF::FPS;
                     } else if (tmp == "ms") {
@@ -164,16 +157,26 @@ int main(int argc, char** argv) {
                     }
                 } break;
 #ifdef RTP_CLOCK_CHECK
-                case args_list("ClockCheckSize"): {
-                    const auto tmp = args.pop();
-                    std::from_chars(tmp.begin(), tmp.end(), clock_check_size);
-                } break;
+                case opts("ClockCheckSize"):
+                    if (auto tmp = args.get_value<size_t>(); tmp) clock_check_size = tmp.value();
+                    break;
 #endif
-                case args_list('h'):
-                    args_list.print_arg();
+                case opts('h'):
+                    printf("Options:\n%s\n", TKLIB_ARG_DESCRIPTION(opts, dft_style_fmt));
                     exit(0);
+                case opts(opt_err::ambiguous): {
+                    std::array<std::string_view, 3> amb;
+                    const auto re = opts.get_ambiguous(args.get_last_parse(), amb.begin(), amb.end());
+                    std::cerr << "'--" << args.get_last_parse() << "' is ambiguous as ";
+                    for (auto it = amb.begin(); it != re; ++it) std::cerr << *it << " ";
+                    std::cerr << std::endl;
+                    exit(1);
+                }
+                case opts(opt_err::no_argument): {
+                    std::cerr << "'" << args.get_last_parse() << "' requires an argument" << std::endl;
+                }
                 default:
-                    fprintf(stderr, "unknown argument: %s\n", args.show().data());
+                    std::cerr << "'" << args.get_last_parse() << "' is unknown argument" << std::endl;
                     exit(1);
             }
         }
