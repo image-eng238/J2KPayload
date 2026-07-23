@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
     {
         using namespace tklib;
         static constexpr argument_list opts(
-            optspec_t{'f', "frame", true, "Number of print info for frame"},
+            optspec_t{'f', "frame", true, "Number of print info for frame (first-last)"},
             optspec_t{'r', "rtp_file", true, "The .rtp file source of packet to send"},
             optspec_t{0, "csv", false, "stdout csv style"},
             optspec_t{0, "csv_fmt", false, "Print csv format"},
@@ -42,15 +42,15 @@ int main(int argc, char** argv) {
                     std::array<std::string_view, 3> amb;
                     const auto re = opts.get_ambiguous(args.get_last_parse(), amb.begin(), amb.end());
                     std::cerr << "'--" << args.get_last_parse() << "' is ambiguous as ";
-                    for (auto it = amb.begin(); it != re; ++it) std::cerr << it;
+                    for (auto it = amb.begin(); it != re; ++it) std::cerr << *it << " ";
                     std::cerr << std::endl;
                     exit(1);
                 }
                 case opts(opt_err::no_argument): {
-                    std::cout << "'" << args.get_last_parse() << "' requires an argument" << std::endl;
+                    std::cerr << "'" << args.get_last_parse() << "' requires an argument" << std::endl;
                 }
                 default:
-                    std::cout << "'" << args.get_last_parse() << "' is unknown argument" << std::endl;
+                    std::cerr << "'" << args.get_last_parse() << "' is unknown argument" << std::endl;
                     exit(1);
             }
         }
