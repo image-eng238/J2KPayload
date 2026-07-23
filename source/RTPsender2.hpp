@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <thread>
 #include <vector>
+#include <string_view>
 
 template <typename T, typename L = std::size_t>
 struct pointer_with_length {
@@ -77,16 +78,17 @@ using packet_t = pointer_with_length<uint8_t>;
 class RTP_file {
 public:
     RTP_file() : codestream{}, packets{}, siz{}, frames{} {};
-    RTP_file(const char* file_path) : RTP_file{} {
+    RTP_file(const std::string_view file_path) : RTP_file{} {
         if (!load(file_path)) {
-            fprintf(stderr, "can`t load file: '%s'\n", file_path);
+            fprintf(stderr, "can`t load file: '%s'\n", file_path.data());
             exit(1);
         }
     }
-    bool load(const char* f) {
+    bool load(const std::string_view f) {
+        if (!std::filesystem::exists(f)) return false;
         siz        = std::filesystem::file_size(f);
         codestream = std::make_unique<uint8_t[]>(siz);
-        FILE* fp   = fopen(f, "r");
+        FILE* fp   = fopen(f.data(), "r");
         if (fp == nullptr) {
             return false;
         }
