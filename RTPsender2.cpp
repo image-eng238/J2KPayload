@@ -81,57 +81,65 @@ int main(int argc, char** argv) {
 
     {
         using namespace tklib;
-        static constexpr argument_list args_list(
-            {{'a', "address", "Send to IPv4 address. default: 127.0.0.1"},
-             {'p', "port", "Send to port. default: 50001"},
-             {'r', "rtp_file", "The .rtp file source of packet to send"},
-             {'i', "interval", "Packet transmission interval (microseconds)"},
-             {'f', "frame_rate", "Overwrite the frame fate. default: values in the rtp file"},
-             {'l', "loop", "Number of loops"},
-             {0, "Enter", "Send with Enter key"},
-             {'h', "help", "Show this"}}
+        static constexpr argument_list opts(
+            optspec_t{'a', "address", true, "Send to IPv4 address. default: 127.0.0.1"},
+            optspec_t{'p', "port", true, "Send to port. default: 50001"},
+            optspec_t{'r', "rtp_file", true, "The .rtp file source of packet to send"},
+            optspec_t{'i', "interval", true, "Packet transmission interval (microseconds)"},
+            optspec_t{'f', "frame_rate", true, "Overwrite the frame fate. default: values in the rtp file"},
+            optspec_t{'l', "loop", true, "Number of loops"},
+            optspec_t{0, "Enter", false, "Send with Enter key"},
+            optspec_t{'h', "help", false, "Show this"}
         );
-        static_assert(args_list.check());
-        argument_t args(argc, argv, args_list);
-        while (!args.empty()) {
-            switch (args.get_opt()) {
-                case args_list('a'):
-                    addr = args.pop();
+        argument_t args(argc, argv, opts);
+        while (args.can_parse()) {
+            switch (args.getopt()) {
+                case opts('a'):
+                    addr = args.get_str();
                     break;
-                case args_list('p'): {
-                    const auto tmp = args.pop();
-                    std::from_chars(tmp.begin(), tmp.end(), port);
-                } break;
-                case args_list('r'):
-                    rtp_path = args.pop();
+                case opts('p'):
+                    if (auto tmp = args.get_value<uint16_t>(); tmp) port = tmp.value();
                     break;
-                case args_list('i'): {
-                    const auto tmp = args.pop();
-                    double tmpd;
-                    std::from_chars(tmp.begin(), tmp.end(), tmpd);
-                    interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double, std::micro>(tmpd));
-                } break;
-                case args_list('f'): {
-                    const auto tmp_s = args.pop();
-                    std::from_chars(tmp_s.begin(), tmp_s.end(), fps_overwrite);
-                    if (fps_overwrite != 0 && fps_overwrite <= J2KPayloadHeader_trait::media_clock_Hz) {
-                        fps_overwrite = J2KPayloadHeader_trait::media_clock_Hz / fps_overwrite;
-                    } else {
-                        fps_overwrite = SIZE_MAX;
+                case opts('r'):
+                    rtp_path = args.get_str();
+                    break;
+                case opts('i'):
+                    if (auto tmp = args.get_value<double>(); tmp) {
+                        interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double, std::micro>(tmp.value()));
                     }
-                } break;
-                case args_list('l'): {
-                    const auto tmp = args.pop();
-                    std::from_chars(tmp.begin(), tmp.end(), number_of_loop);
-                } break;
-                case args_list("Enter"):
+                    break;
+                case opts('f'):
+                    if (auto tmp = args.get_value<size_t>(); tmp) {
+                        fps_overwrite = tmp.value();
+                        if (fps_overwrite != 0 && fps_overwrite <= J2KPayloadHeader_trait::media_clock_Hz) {
+                            fps_overwrite = J2KPayloadHeader_trait::media_clock_Hz / fps_overwrite;
+                        } else {
+                            fps_overwrite = SIZE_MAX;
+                        }
+                    }
+                    break;
+                case opts('l'):
+                    if (auto tmp = args.get_value<size_t>(); tmp) number_of_loop = tmp.value();
+                    break;
+                case opts("Enter"):
                     is_enter_opt = true;
                     break;
-                case args_list('h'):
-                    args_list.print_arg();
+                case opts('h'):
+                    printf("Options:\n%s\n", TKLIB_ARG_DESCRIPTION(opts, dft_style_fmt));
                     exit(0);
+                case opts(opt_err::ambiguous): {
+                    std::array<std::string_view, 3> amb;
+                    const auto re = opts.get_ambiguous(args.get_last_parse(), amb.begin(), amb.end());
+                    std::cerr << "'--" << args.get_last_parse() << "' is ambiguous as ";
+                    for (auto it = amb.begin(); it != re; ++it) std::cerr << *it << " ";
+                    std::cerr << std::endl;
+                    exit(1);
+                }
+                case opts(opt_err::no_argument): {
+                    std::cerr << "'" << args.get_last_parse() << "' requires an argument" << std::endl;
+                }
                 default:
-                    fprintf(stderr, "unknown argument: %s\n", args.show().data());
+                    std::cerr << "'" << args.get_last_parse() << "' is unknown argument" << std::endl;
                     exit(1);
             }
         }
