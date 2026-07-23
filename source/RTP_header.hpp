@@ -200,6 +200,81 @@ namespace J2KPayloadHeader_trait {
         };
         fprintf(fp, "extended_sequence_number = %d\n", J2KPayloadHeader_trait::get_extended_sequence_number(pointer));
     }
+    inline void print_csv(FILE* const fp, const uint8_t* const pointer) {
+        const auto hd = RTPHeader_trait::get_header_length();
+        fprintf(
+            fp, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+            static_cast<int>(RTPHeader_trait::get_V(pointer)),
+            static_cast<int>(RTPHeader_trait::get_P(pointer)),
+            static_cast<int>(RTPHeader_trait::get_X(pointer)),
+            static_cast<int>(RTPHeader_trait::get_CC(pointer)),
+            static_cast<int>(RTPHeader_trait::get_M(pointer)),
+            static_cast<int>(RTPHeader_trait::get_PT(pointer)),
+            static_cast<int>(RTPHeader_trait::get_sequence_number(pointer)),
+            static_cast<int>(RTPHeader_trait::get_timestamp(pointer)),
+            static_cast<int>(RTPHeader_trait::get_SSRC(pointer)),
+            static_cast<int>(J2KPayloadHeader_trait::get_MH(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_TP(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_PTSTAMP(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_ESEQ(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_body_RES(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_body_ORDB(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_body_QUAL(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_body_POS(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_body_PID(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_main_ORDH(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_main_P(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_main_XTRAC(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_main_R(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_main_S(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_main_C(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_main_RSVD(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_main_RANGE(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_main_PRIMS(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_main_TRANS(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_main_MAT(pointer + hd)),
+            static_cast<int>(J2KPayloadHeader_trait::get_extended_sequence_number(pointer))
+        );
+        fflush(fp);
+    }
+    inline int print_csv_fmt(FILE* const fp, int seq = 1) {
+        const size_t num_ccolumn = 30;
+        fprintf(
+            fp, "V[%d],P[%d],X[%d],CC[%d],M[%d],PT[%d],sequence_number[%d],timestamp[%d],SSRC[%d],MH[%d],TP[%d],PTSTAMP[%d],ESEQ[%d],RES[%d],ORDB[%d],QUAL[%d],POS[%d],PID[%d],ORDH[%d],P[%d],XTRAC[%d],R[%d],S[%d],C[%d],RSVD[%d],RANGE[%d],PRIMS[%d],TRANS[%d],MAT[%d],extended_sequence_number[%d]",
+            0 + seq,
+            1 + seq,
+            2 + seq,
+            3 + seq,
+            4 + seq,
+            5 + seq,
+            6 + seq,
+            7 + seq,
+            8 + seq,
+            9 + seq,
+            10 + seq,
+            11 + seq,
+            12 + seq,
+            13 + seq,
+            14 + seq,
+            15 + seq,
+            16 + seq,
+            17 + seq,
+            18 + seq,
+            19 + seq,
+            20 + seq,
+            21 + seq,
+            22 + seq,
+            23 + seq,
+            24 + seq,
+            25 + seq,
+            26 + seq,
+            27 + seq,
+            28 + seq,
+            29 + seq
+        );
+        fflush(fp);
+        return 29 + seq;
+    }
 
 }
 class J2KPayloadHeader {
