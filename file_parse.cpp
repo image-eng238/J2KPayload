@@ -7,71 +7,98 @@
 #include <charconv>
 #include <fstream>
 
+// r: rtp ファイル
+// f: 解析するフレームを範囲で指定(first-last)
+// m: rtp ファイルの処理方法．rtp ファイル，j2c ファイル，log ファイル
+// i: 入力ファイル．rtp ファイル，j2c ファイル を指定
+// o: 出力の書き込み先．省略時は標準出力
+
 int main(int argc, char** argv) {
-    std::string_view rtp_file, write_file;
-    size_t pickup_frame = SIZE_MAX;
+    std::string_view rtp_path, output_path, mode{"log"};
+    tklib::interval_t<size_t> inv{};
     {
         using namespace tklib;
-        static constexpr argument_list args_list(
-            {{'r', "rtp_file", "The .rtp file source of packet to parse"},
-             {'p', "picup", "Picup frame"},
-             {'w', "write", "Write codestream"},
-             {'h', "help", "Show this"}}
+        static constexpr argument_list opts(
+            optspec_t{'r', "rtp_file", true, "The .rtp file source of packet to parse"},
+            optspec_t{'f', "frame", true, "Specify frames to process (first-last)"},
+            optspec_t{'m', "mode", true, "Processing mode (j2c, log)"},
+            // optspec_t{'i', "input", true, "input file"},
+            optspec_t{'o', "output", true, "output file, std if omitted"},
+            optspec_t{'h', "help", false, "Show this"}
         );
-        argument_t args{argc, argv, args_list};
-        while (!args.empty()) {
-            switch (args.get_opt()) {
-                case args_list('r'):
-                    rtp_file = args.pop();
+        argument_t args{argc, argv, opts};
+        while (args.can_parse()) {
+            switch (args.getopt()) {
+                case opts('r'):
+                    rtp_path = args.get_str();
                     break;
-                case args_list('p'): {
-                    const auto tmp = args.pop();
-                    std::from_chars(tmp.begin(), tmp.end(), pickup_frame);
-                } break;
-                case args_list('w'):
-                    write_file = args.pop();
+                case opts('f'):
+                    if (auto tmp = args.get_interval<size_t>(); tmp) inv = tmp.value();
                     break;
-                case args_list('h'):
-                    args_list.print_arg();
+                case opts('m'):
+                    mode = args.get_str();
+                    if (mode != "j2c" && mode != "log") {
+                        std::cerr << "'" << mode << "' is unknown mode" << std::endl;
+                        exit(1);
+                    }
+                    break;
+                case opts('o'):
+                    output_path = args.get_str();
+                    break;
+                case opts('h'):
+                    printf("Usage:\n%s\n", TKLIB_ARG_DESCRIPTION(opts, dft_style_fmt));
                     exit(0);
-
-                default:
-                    fprintf(stderr, "unknown argument: %s\n", args.show().data());
+                case opts(opt_err::ambiguous): {
+                    std::array<std::string_view, 3> amb;
+                    const auto re = opts.get_ambiguous(args.get_last_parse(), amb.begin(), amb.end());
+                    std::cerr << "'--" << args.get_last_parse() << "' is ambiguous as ";
+                    for (auto it = amb.begin(); it != re; ++it) std::cerr << *it << " ";
+                    std::cerr << std::endl;
                     exit(1);
-                    break;
+                }
+                case opts(opt_err::no_argument): {
+                    std::cerr << "'" << args.get_last_parse() << "' requires an argument" << std::endl;
+                }
+                default:
+                    std::cerr << "'" << args.get_last_parse() << "' is unknown argument" << std::endl;
+                    exit(1);
             }
         }
     }
 
-    const auto is_write = !write_file.empty();
-    std::fstream wfile;
-
-    RTP_file rtpf(rtp_file.data());
-    constexpr size_t PACKET_BUFFER_LENGTH = 1360;
-    static leaky_bucket_buf::link_list packet_buffer[PACKET_BUFFER_LENGTH];
-    leaky_bucket_buf buffer(nullptr, packet_buffer, PACKET_BUFFER_LENGTH);
-    RTPReceiver rtp_recv(&buffer);
-    std::array<fast_table, ConstValue::all_precinct> j2k_packet_table{};
-
-    size_t nowf = 0;
-
-    const size_t packet_in_frame = [&] {
-        size_t n = 0;
-        while (!RTPHeader_trait::get_M(rtpf.get_pkt(n++).data()));
-        return n;
-    }();
-
-    if (!is_write) {
-        for (size_t i = (pickup_frame != SIZE_MAX) ? pickup_frame * packet_in_frame - packet_in_frame : 0; i < std::min(rtpf.num_packet(), pickup_frame * packet_in_frame);) {
-            {
-                packet_t pkt;
-                do {
-                    pkt = rtpf.get_pkt(i);
-                    buffer.push(pkt.data(), pkt.size());
-                    ++i;
-                } while (!RTPHeader_trait::get_M(pkt.data()));
-                nowf++;
+    const auto frame_max = inv.last + 1 - inv.first;
+    RTP_file rtpf(rtp_path);
+    tklib::interval_t<size_t> frame_range{};
+    packet_t pkt;
+    for (size_t i = 0, frm = 0; i < rtpf.num_packet(); ++i) {
+        pkt = rtpf.get_pkt(i);
+        if (J2KPayloadHeader_trait::get_MH(pkt.data() + RTPHeader_trait::length)) {
+            ++frm;
+            if (frm == inv.first) {
+                frame_range.first = i;
             }
+        }
+        if (RTPHeader_trait::get_M(pkt.data())) {
+            if (frm == inv.last) {
+                frame_range.last = i + 1;
+                break;
+            }
+        }
+    }
+
+    if (mode == "log") {
+        constexpr size_t PACKET_BUFFER_LENGTH = 1360;
+        static leaky_bucket_buf::link_list packet_buffer[PACKET_BUFFER_LENGTH];
+        leaky_bucket_buf buffer(nullptr, packet_buffer, PACKET_BUFFER_LENGTH);
+        RTPReceiver rtp_recv(&buffer);
+        std::array<fast_table, ConstValue::all_precinct> j2k_packet_table{}; // 1836
+
+        for (size_t i = 0, j = frame_range.first; i < frame_max; ++i) {
+            // load 1 frame
+            do {
+                pkt = rtpf.get_pkt(j++);
+                buffer.push(pkt.data(), pkt.size());
+            } while (!RTPHeader_trait::get_M(pkt.data()));
 
             MainHeader main_header;
             Tile j2k_tile;
@@ -95,24 +122,35 @@ int main(int argc, char** argv) {
                     for (; table_index < j2k_packet_table.size(); ++table_index) {
                         j2k_packet_table[table_index].read_packet(buf);
                     }
+                    const auto last = buf.get_byte(2);
+                    assert(last == j2kmk::EOC);
                     break;
                 }
             }
-            // assert(table_index == j2k_packet_table.size());}
         }
-    } else {
-        wfile.open(write_file.data(), std::ios::out);
-        if (!wfile.is_open()) {
-            std::cerr << "can't open file: '" << write_file << "'" << std::endl;
+
+    } else if (mode == "j2c") {
+        if (output_path.empty()) {
+            std::cerr << "please specify --output_file" << std::endl;
             exit(1);
         }
+
         const auto hd = RTPHeader_trait::get_header_length() + J2KPayloadHeader_trait::get_header_length();
-        packet_t pkt;
-        auto i = rtpf.pickup_frame(pickup_frame);
-        do {
-            pkt = rtpf.get_pkt(i++);
-            wfile.write(reinterpret_cast<const char*>(pkt.data()) + hd, pkt.size() - hd);
-        } while (!RTPHeader_trait::get_M(pkt.data()));
+        std::fstream output_file;
+        output_file.open(output_path.data(), std::ios::out);
+        if (!output_file.is_open()) {
+            std::cerr << "can't open file: '" << output_path << "'" << std::endl;
+            exit(1);
+        }
+
+        for (size_t i = frame_range.first; i < frame_range.last; ++i) {
+            pkt = rtpf.get_pkt(i);
+            output_file.write(reinterpret_cast<const char*>(pkt.data()) + hd, pkt.size() - hd);
+        }
+
+    } else {
+        exit(1);
     }
+
     return 0;
 }
