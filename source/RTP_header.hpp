@@ -201,40 +201,77 @@ namespace J2KPayloadHeader_trait {
         fprintf(fp, "extended_sequence_number = %d\n", J2KPayloadHeader_trait::get_extended_sequence_number(pointer));
     }
     inline void print_csv(FILE* const fp, const uint8_t* const pointer) {
-        const auto hd = RTPHeader_trait::get_header_length();
-        fprintf(
-            fp, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
-            static_cast<int>(RTPHeader_trait::get_V(pointer)),
-            static_cast<int>(RTPHeader_trait::get_P(pointer)),
-            static_cast<int>(RTPHeader_trait::get_X(pointer)),
-            static_cast<int>(RTPHeader_trait::get_CC(pointer)),
-            static_cast<int>(RTPHeader_trait::get_M(pointer)),
-            static_cast<int>(RTPHeader_trait::get_PT(pointer)),
-            static_cast<int>(RTPHeader_trait::get_sequence_number(pointer)),
-            static_cast<int>(RTPHeader_trait::get_timestamp(pointer)),
-            static_cast<int>(RTPHeader_trait::get_SSRC(pointer)),
-            static_cast<int>(J2KPayloadHeader_trait::get_MH(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_TP(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_PTSTAMP(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_ESEQ(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_body_RES(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_body_ORDB(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_body_QUAL(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_body_POS(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_body_PID(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_main_ORDH(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_main_P(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_main_XTRAC(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_main_R(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_main_S(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_main_C(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_main_RSVD(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_main_RANGE(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_main_PRIMS(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_main_TRANS(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_main_MAT(pointer + hd)),
-            static_cast<int>(J2KPayloadHeader_trait::get_extended_sequence_number(pointer))
-        );
+        const auto hd      = RTPHeader_trait::get_header_length();
+        const bool is_main = J2KPayloadHeader_trait::get_MH(pointer + hd);
+        if (is_main) {
+            fprintf(
+                fp, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+                static_cast<int>(RTPHeader_trait::get_V(pointer)),
+                static_cast<int>(RTPHeader_trait::get_P(pointer)),
+                static_cast<int>(RTPHeader_trait::get_X(pointer)),
+                static_cast<int>(RTPHeader_trait::get_CC(pointer)),
+                static_cast<int>(RTPHeader_trait::get_M(pointer)),
+                static_cast<int>(RTPHeader_trait::get_PT(pointer)),
+                static_cast<int>(RTPHeader_trait::get_sequence_number(pointer)),
+                static_cast<int>(RTPHeader_trait::get_timestamp(pointer)),
+                static_cast<int>(RTPHeader_trait::get_SSRC(pointer)),
+                static_cast<int>(J2KPayloadHeader_trait::get_MH(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_TP(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_PTSTAMP(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_ESEQ(pointer + hd)),
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                static_cast<int>(J2KPayloadHeader_trait::get_main_ORDH(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_main_P(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_main_XTRAC(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_main_R(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_main_S(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_main_C(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_main_RSVD(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_main_RANGE(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_main_PRIMS(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_main_TRANS(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_main_MAT(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_extended_sequence_number(pointer))
+            );
+        } else {
+            fprintf(
+                fp, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+                static_cast<int>(RTPHeader_trait::get_V(pointer)),
+                static_cast<int>(RTPHeader_trait::get_P(pointer)),
+                static_cast<int>(RTPHeader_trait::get_X(pointer)),
+                static_cast<int>(RTPHeader_trait::get_CC(pointer)),
+                static_cast<int>(RTPHeader_trait::get_M(pointer)),
+                static_cast<int>(RTPHeader_trait::get_PT(pointer)),
+                static_cast<int>(RTPHeader_trait::get_sequence_number(pointer)),
+                static_cast<int>(RTPHeader_trait::get_timestamp(pointer)),
+                static_cast<int>(RTPHeader_trait::get_SSRC(pointer)),
+                static_cast<int>(J2KPayloadHeader_trait::get_MH(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_TP(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_PTSTAMP(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_ESEQ(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_body_RES(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_body_ORDB(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_body_QUAL(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_body_POS(pointer + hd)),
+                static_cast<int>(J2KPayloadHeader_trait::get_body_PID(pointer + hd)),
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1
+            );
+        }
         fflush(fp);
     }
     inline int print_csv_fmt(FILE* const fp, int seq = 1) {
