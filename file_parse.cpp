@@ -113,7 +113,7 @@ int main(int argc, char** argv) {
             while (true) {
                 rtp_recv.check();
                 PID = rtp_recv.get_PID();
-                while (j2k_packet_table[table_index].PID != PID) {
+                while (table_index < j2k_packet_table.size() && j2k_packet_table[table_index].PID != PID) {
                     j2k_packet_table[table_index].read_packet(buf);
                     ++table_index;
                 }

@@ -17,8 +17,11 @@ int32_t RTPReceiver::first_check() {
         pre_sequence_number = sequence;
 
         if (likely(get_MH(data + hl))) { // メインヘッダ出現
-            num_packets = 1;
-            cache       = {};
+            num_packets         = 1;
+            cache               = {};
+            packets[1].len      = buffer->pop(packets[1].data);
+            pre_sequence_number = get_extended_sequence_number(packets[1].data);
+            ++num_packets;
             return this->MAIN_HEADER;
         }
     }
@@ -101,7 +104,11 @@ void RTPReceiver::pop(uint8_t*& ptr, size_t& len) {
                 len = static_cast<size_t>(pkt.len - hl);
             } else {
                 if (unlikely(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()))) { throw buffer_leak("ORDB"); }
-                len = J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
+                if (is_EOC) {
+                    len = pkt.len;
+                } else {
+                    len = J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
+                }
             }
         }
     } else {
