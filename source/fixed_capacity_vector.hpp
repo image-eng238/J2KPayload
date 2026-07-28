@@ -113,7 +113,7 @@ public:
         if (sz > max_size()) { throw std::bad_alloc{}; }
         if (size() < sz) {
             for (; len < sz; ++len) {
-                new (data() + len) value_type{};
+                assign_value(data() + len);
             }
         } else if (size() == sz) {
             return;
@@ -127,7 +127,7 @@ public:
         if (sz > max_size()) { throw std::bad_alloc{}; }
         if (size() < sz) {
             for (; len < sz; ++len) {
-                new (data() + len) value_type{c};
+                assign_value(data() + len, c);
             }
         } else if (size() == sz) {
             return;
@@ -228,8 +228,23 @@ public:
         return pos;
     }
 
-    iterator erase(const_iterator position);
-    iterator erase(const_iterator first, const_iterator last);
+    iterator erase(const_iterator position) {
+        iterator pos = const_cast<iterator>(position);
+        std::destroy_at(pos);
+        erase_shift_left(pos, end(), 1);
+        --len;
+        return pos;
+    }
+    iterator erase(const_iterator first, const_iterator last) {
+        iterator fs = const_cast<iterator>(first);
+        iterator ls = const_cast<iterator>(last);
+        for (auto it = fs; it != ls; ++it) {
+            std::destroy_at(it);
+        }
+        len -= std::distance(fs, ls);
+        erase_shift_left(fs, end(), std::distance(fs, ls));
+        return fs;
+    }
 
     void swap(fixed_capacity_vector& x);
 
@@ -239,8 +254,11 @@ public:
     }
 
 private:
+    static pointer assign_value(pointer ptr) {
+        return new (ptr) value_type{};
+    }
     template <typename... Args>
-    pointer assign_value(pointer ptr, Args&&... args) {
+    static pointer assign_value(pointer ptr, Args&&... args) {
         return new (ptr) value_type(std::forward<Args>(args)...);
     }
 
@@ -249,13 +267,13 @@ private:
         for (; first != last; ++first) { assign_value(data() + len++, *first); }
     }
 
-    void iterator_shift_left(iterator first, iterator last, size_type n) {
+    static iterator erase_shift_left(iterator first, iterator last, size_type n) {
         for (; first != last; ++first) {
-            assign_value(std::advance(first, n), std::move(*first));
-            std::destroy_at(first);
+            assign_value(first, std::move(*(std::next(first, n))));
         }
+        return last - n;
     }
-    iterator insert_shift_right(iterator first, iterator last, size_type n) {
+    static iterator insert_shift_right(iterator first, iterator last, size_type n) {
         for (auto it = last - 1; it >= first; --it) {
             assign_value(std::next(it, n), std::move(*it));
             std::destroy_at(it);
