@@ -341,7 +341,7 @@ void MainHeader2::read(J2kBuf& in) {
                 break;
             case j2kmk::SOT:
                 return;
-            case j2kmk::SIZ:
+            case j2kmk::SIZ: {
                 siz.emplace_back(in);
                 const auto Csiz = siz.front().get_Csiz();
                 if (!memory.is_allocated()) {
@@ -352,7 +352,7 @@ void MainHeader2::read(J2kBuf& in) {
                 }
                 coc.reserve(Csiz);
                 qcc.reserve(Csiz);
-                break;
+            } break;
             case j2kmk::CAP:
                 cap.emplace_back(in);
                 break;
