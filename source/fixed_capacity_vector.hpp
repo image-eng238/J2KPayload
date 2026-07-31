@@ -281,3 +281,6 @@ private:
         return last;
     }
 };
+
+template <typename T>
+class fixed_capacity_vector<T, 0> {};

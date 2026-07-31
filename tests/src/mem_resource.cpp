@@ -3,9 +3,9 @@
 
 int main() {
     j2k_resource<int, char, size_t> memory;
-    // if (!memory.prev_allocate(16, 2, 3, std::nothrow)) {
-    //     exit(1);
-    // }
+    if (!memory.prev_allocate(16, 2, 3, std::nothrow)) {
+        exit(1);
+    }
     {
         std::pmr::vector<int> vec_int(&memory);
         std::pmr::vector<int> vec_int2(&memory);
