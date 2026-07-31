@@ -53,3 +53,8 @@ add_executable(sender_test sender_test.cpp)
 add_executable(UDPtest UDPtest.cpp)
 
 add_executable(RTP_show RTP_show.cpp)
+
+
+# test
+
+add_subdirectory(./tests)
