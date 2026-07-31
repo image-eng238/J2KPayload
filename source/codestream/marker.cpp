@@ -333,3 +333,54 @@ TilePartHeader::TilePartHeader(J2kBuf& in, const uint16_t Csiz, uint32_t& header
         }
     }
 }
+
+void MainHeader2::read(J2kBuf& in) {
+    while (true) {
+        switch (const uint16_t type = in.get_byte(2); type) {
+            case j2kmk::SOC:
+                break;
+            case j2kmk::SOT:
+                return;
+            case j2kmk::SIZ:
+                siz.emplace_back(in);
+                const auto Csiz = siz.front().get_Csiz();
+                if (!memory.is_allocated()) {
+                    if (!memory.prev_allocate(Csiz, Csiz, std::nothrow)) {
+                        fprintf(stderr, "memory allocate failure\n");
+                        exit(1);
+                    }
+                }
+                coc.reserve(Csiz);
+                qcc.reserve(Csiz);
+                break;
+            case j2kmk::CAP:
+                cap.emplace_back(in);
+                break;
+            case j2kmk::COD:
+                cod.emplace_back(in);
+                break;
+            case j2kmk::COC:
+                coc.emplace_back(in, siz.front().get_Csiz());
+                break;
+            case j2kmk::QCD:
+                qcd.emplace_back(in);
+                break;
+            case j2kmk::QCC:
+                qcc.emplace_back(in, siz.front().get_Csiz());
+                break;
+            case j2kmk::DFS:
+                dfs.emplace_back(in);
+                break;
+            case j2kmk::COM:
+                in.step(in.get_byte(2) - 2);
+                break;
+            default:
+                std::cout << "unknown marker: " << std::hex << type << std::endl;
+                if ((type >> 8) != 0xFF) {
+                    return;
+                }
+                auto length = in.get_byte(2);
+                in.step(length - 2);
+        }
+    }
+}

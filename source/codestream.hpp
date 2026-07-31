@@ -8,6 +8,9 @@
 #include "RTP_header.hpp"
 #include "opt_macro.hpp"
 
+#include "fixed_capacity_vector.hpp"
+#include "mem_resource.hpp"
+
 template <typename T = uint32_t>
 struct Postion2D {
     T x;
@@ -526,4 +529,23 @@ private:
 public:
     TilePartHeader(J2kBuf&, const uint16_t, uint32_t&);
     // MultiMem::multi_ptr<SOT> sot;
+};
+
+struct MainHeader2 {
+    MainHeader2() : memory{}, siz{}, cap{}, cod{}, coc{&memory}, qcd{}, qcc{&memory}, dfs{} {}
+    void read(J2kBuf&);
+
+    j2k_resource<COC, QCC> memory;
+    fixed_capacity_vector<SIZ, 1> siz;
+    fixed_capacity_vector<CAP, 1> cap;
+    fixed_capacity_vector<COD, 1> cod;
+    std::pmr::vector<COC> coc;
+    fixed_capacity_vector<QCD, 1> qcd;
+    std::pmr::vector<QCC> qcc;
+    // fixed_capacity_vector<ATK,1> atk;
+    fixed_capacity_vector<DFS, 2> dfs;
+    // fixed_capacity_vector<CBD,0>cbd ;
+    // fixed_capacity_vector<MCT, 0> mct;
+    // fixed_capacity_vector<MCO, 0> mco;
+    // fixed_capacity_vector<MCC, 0> mcc;
 };
