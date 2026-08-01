@@ -382,6 +382,7 @@ public:
 
     int load_main_packet();
     int load_body_packet();
+    packet_t RTPReceiver::pop();
 
     uint32_t get_last_sequence_number() const { return pre_sequence_number; }
     void set_last_sequence_number(const uint32_t in) { pre_sequence_number = in; }
@@ -404,6 +405,7 @@ private:
     packet cache;
     std::array<packet, 16> packets;
     fixed_capacity_vector<packet_t, 16> packets_;
+    decltype(packets_)::iterator packet_it;
     uint8_t pos;
     uint8_t num_packets;
     bool is_EOC;
