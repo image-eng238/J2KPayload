@@ -117,3 +117,34 @@ void RTPReceiver::pop(uint8_t*& ptr, size_t& len) {
         cache = {};
     }
 }
+
+int RTPReceiver::load_main_packet() {
+    using namespace RTPHeader_trait;
+    using namespace J2KPayloadHeader_trait;
+    const auto hd = RTPHeader_trait::get_header_length();
+    packets_.clear();
+
+    const packet_t* pkt;
+
+    while (true) {
+
+        pkt = &packets_.push_back(buffer->pop());
+        if (unlikely(pkt->size() == 1 && RTPHeader_trait::get_V(pkt->data()) != 0b10)) return this->FINISH;
+
+        const auto m_seq    = get_extended_sequence_number(pkt->data());
+        pre_sequence_number = m_seq;
+
+        if (likely(get_MH(pkt->data() + hd))) { // メインヘッダ出現
+            cache = {};
+            pkt   = &packets_.push_back(buffer->pop());
+
+            const auto b_seq = get_extended_sequence_number(pkt->data());
+
+            if (likely((b_seq == m_seq + 1) || (m_seq == 0 && b_seq == 1) || (m_seq == ex_sequence_max || b_seq == 0))) {
+                pre_sequence_number = b_seq;
+                return this->MAIN_HEADER;
+            }
+            continue;
+        }
+    }
+}

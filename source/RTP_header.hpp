@@ -5,6 +5,8 @@
 #include "leaky_bucket_buf.hpp"
 #include "opt_macro.hpp"
 #include "wrap_number.hpp"
+#include "packet_t.hpp"
+#include "fixed_capacity_vector.hpp"
 
 /*****************************************************************************************************************************************************************************/
 /* RTPHeader                                                                                                                                                                 */
@@ -378,6 +380,9 @@ public:
     int32_t check();
     void pop(uint8_t*&, size_t&);
 
+    int load_main_packet();
+    int load_body_packet();
+
     uint32_t get_last_sequence_number() const { return pre_sequence_number; }
     void set_last_sequence_number(const uint32_t in) { pre_sequence_number = in; }
     uint32_t get_lost_packet() const { return num_lost_packet; }
@@ -398,6 +403,7 @@ private:
     };
     packet cache;
     std::array<packet, 16> packets;
+    fixed_capacity_vector<packet_t, 16> packets_;
     uint8_t pos;
     uint8_t num_packets;
     bool is_EOC;
