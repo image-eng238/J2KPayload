@@ -236,6 +236,7 @@ public:
         return pos;
     }
     iterator erase(const_iterator first, const_iterator last) {
+        if (first == last) { return const_cast<iterator>(first); }
         iterator fs = const_cast<iterator>(first);
         iterator ls = const_cast<iterator>(last);
         for (auto it = fs; it != ls; ++it) {

@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
 
             MainHeader main_header;
             Tile j2k_tile;
-            rtp_recv.first_check();
+            rtp_recv.load_main_packet();
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
@@ -111,19 +111,16 @@ int main(int argc, char** argv) {
             uint32_t PID       = 0;
             size_t table_index = 0;
             while (true) {
-                rtp_recv.check();
+                rtp_recv.load_body_packet();
                 PID = rtp_recv.get_PID();
-                while (j2k_packet_table[table_index].PID != PID) {
+                while (table_index < j2k_packet_table.size() && j2k_packet_table[table_index].PID != PID) {
                     j2k_packet_table[table_index].read_packet(buf);
                     ++table_index;
                 }
-                if (rtp_recv.EOC()) {
-                    rtp_recv.check();
-                    for (; table_index < j2k_packet_table.size(); ++table_index) {
-                        j2k_packet_table[table_index].read_packet(buf);
-                    }
-                    const auto last = buf.get_byte(2);
-                    assert(last == j2kmk::EOC);
+                if (table_index == j2k_packet_table.size()) {
+                    auto m = buf.get_byte(2);
+                    assert(m == j2kmk::EOC);
+                    rtp_recv.terminate();
                     break;
                 }
             }

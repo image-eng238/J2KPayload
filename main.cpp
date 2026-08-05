@@ -293,7 +293,7 @@ int main(int argc, char** argv) {
         {
             int32_t result = 0;
             while (true) {
-                result = rtp_recv.first_check();
+                result = rtp_recv.load_main_packet();
                 if (result == RTPReceiver::MAIN_HEADER) break;
                 if (result == RTPReceiver::FINISH) {
                     return;
@@ -331,24 +331,18 @@ int main(int argc, char** argv) {
 #endif
                 try {
                     last_sequence          = rtp_recv.get_last_sequence_number();
-                    const auto recv_result = rtp_recv.check();
+                    const auto recv_result = rtp_recv.load_body_packet();
                     if (likely(recv_result == RTPReceiver::SUCCESS)) { // 正常受信
-                        PID = rtp_recv.get_PID();
                         J2kBuf buf(&rtp_recv);
-                        while (true) {
-                            if (j2k_packet_table[table_index].PID == PID) break;
+                        PID = rtp_recv.get_PID();
+                        while (table_index < j2k_packet_table.size() && j2k_packet_table[table_index].PID != PID) {
                             j2k_packet_table[table_index].read_packet(buf);
                             ++table_index;
                         }
-                        // assert(buf.empty());
-                        if (unlikely(rtp_recv.EOC())) { // フレーム終了
-                            const auto tmp = rtp_recv.check();
-                            assert(tmp == RTPReceiver::SUCCESS);
-                            for (; table_index < j2k_packet_table.size(); ++table_index) {
-                                j2k_packet_table[table_index].read_packet(buf);
-                            }
-                            const auto last = buf.get_byte(2);
-                            assert(last == j2kmk::EOC);
+                        if (unlikely(table_index == j2k_packet_table.size())) {
+                            auto m = buf.get_byte(2);
+                            assert(m == j2kmk::EOC);
+                            rtp_recv.terminate();
                             table_index = 0;
                             frame_update();
                         }
@@ -359,12 +353,14 @@ int main(int argc, char** argv) {
                                 [&](const uint8_t* data) { return RTPHeader_trait::get_M(data); },
                                 [&](const uint8_t* data) { rtp_recv.set_last_sequence_number(J2KPayloadHeader_trait::get_extended_sequence_number(data)); }
                             );
+                            rtp_recv.terminate();
                             const auto post_in_buf = buffer.get_num_data();
                             fprintf(stderr, "  frame discarded by clockskew analysis_frame: %ld, in buf: %ld -> %ld\n", analysis_frame, in_buf, post_in_buf);
                             ++loss_frame;
                         } else if (in_buf < size_t(1360 * 0.75)) {
                             const auto in_buf = buffer.get_num_data();
                             frame_update();
+                            rtp_recv.terminate();
                             const auto post_in_buf = buffer.get_num_data();
                             fprintf(stderr, "  frame interpolation by clockskew analysis_frame: %ld, in buf: %ld -> %ld\n", analysis_frame, in_buf, post_in_buf);
                             ++interpolate_frame;

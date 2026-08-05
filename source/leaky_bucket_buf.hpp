@@ -1,6 +1,7 @@
 #pragma once
 
 #include "UDP.hpp"
+#include "packet_t.hpp"
 
 #include <cstdint>
 #include <cstddef>
@@ -48,8 +49,34 @@ public:
     int receive();
     void inspkt();
     void push(const uint8_t* const, int);
+
+    int get(uint8_t*&);
+    int get_noexcept(uint8_t*&) noexcept;
     int pop(uint8_t*&);
     int pop_noexcept(uint8_t*&) noexcept;
+
+    packet_t get() {
+        packet_t tmp;
+        tmp.len = get(tmp.ptr);
+        return tmp;
+    }
+    packet_t get_noexcept() noexcept {
+        packet_t tmp;
+        tmp.len = get_noexcept(tmp.ptr);
+        return tmp;
+    }
+    packet_t pop() {
+        packet_t tmp;
+        tmp.len = pop(tmp.ptr);
+        return tmp;
+    }
+    packet_t pop_noexcept() noexcept {
+        packet_t tmp;
+        tmp.len = pop_noexcept(tmp.ptr);
+        return tmp;
+    }
+
+    void advance();
     void clear();
     static uint32_t get_seq(const uint8_t* const data) { return static_cast<uint32_t>(data[15] << 0x10) | static_cast<uint32_t>(data[2] << 0x8) | static_cast<uint32_t>(data[3]); }
     size_t get_num_data() {
@@ -65,7 +92,7 @@ public:
     size_t get_buffer_length() const { return buffer_length; }
 
 private:
-    int pop_impl(uint8_t*&);
+    int get_impl(uint8_t*&, bool);
     link_list* next_write; // receive からのみアクセス
     link_list* next_pop;   // pop からのみアクセス
     link_list* last_write; // おそらく receive からのみアクセス
