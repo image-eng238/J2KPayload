@@ -40,7 +40,7 @@ add_executable(j2kpay main.cpp)
 target_link_libraries(j2kpay CodeStream Decoding LeakyBucket RTP_header)
 
 add_executable(filep file_parse.cpp)
-target_compile_definitions(Decoding PUBLIC -DGENERATE_LOG)
+# target_compile_definitions(Decoding PUBLIC -DGENERATE_LOG)
 target_link_libraries(filep CodeStream Decoding LeakyBucket RTP_header)
 
 add_executable(RTPsender RTPsender.cpp)
