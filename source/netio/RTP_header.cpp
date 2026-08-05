@@ -228,7 +228,7 @@ int RTPReceiver::load_body_packet() {
         } else {
             fprintf(stderr, "pre: %d, seq: %d, diff: %d\n", pre_sequence, current_sequence, current_sequence - pre_sequence);
             // パケットロス発生 次の再同期ポイントまでパケットを破棄
-            j2k_packets.clear();
+            terminate();
             if (unlikely(current_sequence == 0)) {
                 num_lost_packet = ex_sequence_max - pre_sequence;
             } else {
