@@ -26,10 +26,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always")
 # set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0 -g")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0 -g -fsanitize=address")
 # set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0 -g -fsanitize=memory")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3 -g -fomit-frame-pointer -finline-functions -finline-limit-20000 -finline -funroll-loops -flto")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3 -g -fomit-frame-pointer -finline-functions -finline-limit-20000 -finline -funroll-loops -flto=auto")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS} -O3 -g -fsanitize=address")
 # set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS} -O3 -g -fno-default-inline -fomit-frame-pointer ${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -UNDEBUG")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS} -O3 -g -fomit-frame-pointer -finline-functions -finline-limit-20000 -finline -funroll-loops -flto -gdwarf-5")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS} -O3 -g -fomit-frame-pointer -finline-functions -finline-limit-20000 -finline -funroll-loops -flto=auto -gdwarf-5")
 
 # sub directories
 add_subdirectory(./source)
