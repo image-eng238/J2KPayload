@@ -389,6 +389,9 @@ public:
     uint32_t get_lost_packet() const { return num_lost_packet; }
     uint32_t get_PID() const { return PID; }
     bool EOC() const { return is_EOC; }
+    static bool check_rtp_sequence(uint32_t prev, uint32_t current) {
+        return (current == prev + 1) || (prev == 0 && current == 1) || (prev == J2KPayloadHeader_trait::ex_sequence_max || current == 0);
+    }
 
 private:
     leaky_bucket_buf* buffer;

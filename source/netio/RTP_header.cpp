@@ -54,7 +54,7 @@ int32_t RTPReceiver::check() {
         const auto pre_sequence = pre_sequence_number;
         pre_sequence_number     = sequence;
 
-        if (likely((sequence == pre_sequence + 1) || (pre_sequence == 0 && sequence == 1) || (pre_sequence == ex_sequence_max || sequence == 0))) {
+        if (likely(check_rtp_sequence(pre_sequence, sequence))) {
             if (unlikely(get_MH(data + hl))) { // メインヘッダ出現
                 assert(num_packets == 1);
                 cache = {};
@@ -140,7 +140,7 @@ int RTPReceiver::load_main_packet() {
 
             const auto b_seq = get_extended_sequence_number(pkt->data());
 
-            if (likely((b_seq == m_seq + 1) || (m_seq == 0 && b_seq == 1) || (m_seq == ex_sequence_max || b_seq == 0))) {
+            if (likely(check_rtp_sequence(m_seq, b_seq))) {
                 pre_sequence_number = b_seq;
                 return this->MAIN_HEADER;
             }
@@ -173,7 +173,7 @@ int RTPReceiver::load_body_packet() {
         const auto pre_sequence = pre_sequence_number;
         pre_sequence_number     = sequence;
 
-        if (likely((sequence == pre_sequence + 1) || (pre_sequence == 0 && sequence == 1) || (pre_sequence == ex_sequence_max || sequence == 0))) {
+        if (likely(check_rtp_sequence(pre_sequence, sequence))) {
             if (unlikely(get_MH(pkt->data() + hd))) { // メインヘッダ出現
                 assert(j2k_packets.size() == 1);
                 j2k_packets.clear();
