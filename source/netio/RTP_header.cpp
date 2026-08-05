@@ -123,20 +123,20 @@ int RTPReceiver::load_main_packet() {
     using namespace J2KPayloadHeader_trait;
     const auto hd = RTPHeader_trait::get_header_length();
 
-    // packets_.clear();
+    // j2k_packets.clear();
 
     const packet_t* pkt;
 
     while (true) {
 
-        pkt = &packets_.push_back(buffer->pop());
+        pkt = &j2k_packets.push_back(buffer->pop());
         if (unlikely(pkt->size() == 1 && RTPHeader_trait::get_V(pkt->data()) != 0b10)) return this->FINISH;
 
         const auto m_seq    = get_extended_sequence_number(pkt->data());
         pre_sequence_number = m_seq;
 
         if (likely(get_MH(pkt->data() + hd))) { // メインヘッダ出現
-            pkt = &packets_.push_back(buffer->pop());
+            pkt = &j2k_packets.push_back(buffer->pop());
 
             const auto b_seq = get_extended_sequence_number(pkt->data());
 
@@ -154,15 +154,19 @@ int RTPReceiver::load_body_packet() {
     using namespace J2KPayloadHeader_trait;
     const auto hd = RTPHeader_trait::get_header_length();
 
-    if (packets_.empty()) {
-        packets_.erase(packets_.begin(), packets_.end() - 1);
+    if (!j2k_packets.empty()) {
+        j2k_packets.erase(j2k_packets.begin(), j2k_packets.end() - 1);
+        // if (is_EOC) {
+        //     is_EOC = false;
+        //     return this->SUCCESS;
+        // }
     }
 
     const packet_t* pkt;
 
     while (true) {
 
-        pkt = &packets_.push_back(buffer->pop());
+        pkt = &j2k_packets.push_back(buffer->pop());
         if (unlikely(pkt->size() == 1 && RTPHeader_trait::get_V(pkt->data()) != 0b10)) return this->FINISH;
 
         const auto sequence     = get_extended_sequence_number(pkt->data());
@@ -171,15 +175,18 @@ int RTPReceiver::load_body_packet() {
 
         if (likely((sequence == pre_sequence + 1) || (pre_sequence == 0 && sequence == 1) || (pre_sequence == ex_sequence_max || sequence == 0))) {
             if (unlikely(get_MH(pkt->data() + hd))) { // メインヘッダ出現
-                assert(packets_.size() == 1);
-                packets_.clear();
+                assert(j2k_packets.size() == 1);
+                j2k_packets.clear();
                 continue;
             }
 
-            if (unlikely(get_M(pkt->data()))) { is_EOC = true; } // コードストリーム終端
+            if (unlikely(get_M(pkt->data()))) {
+                is_EOC = true;
+            } // コードストリーム終端
 
             if (get_body_ORDB(pkt->data() + hd)) { // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
                 PID = get_body_PID(pkt->data() + hd);
+                pos = 0;
                 return this->SUCCESS;
             }
         } else {
@@ -211,28 +218,35 @@ packet_t RTPReceiver::pop() {
     const auto rhd = RTPHeader_trait::get_header_length();
     const auto jhd = rhd + J2KPayloadHeader_trait::get_header_length();
 
-    if (cache.empty() || cache.is_main()) {
-        if (unlikely(!(pos < num_packets))) { throw buffer_leak("out range"); }
-        const auto& pkt = packets[pos++];
-        ptr             = pkt.data + hl;
-        if (unlikely(J2KPayloadHeader_trait::get_MH(pkt.data + RTPHeader_trait::get_header_length()))) {
-            len = static_cast<size_t>(pkt.len - hl);
+    if (unlikely(!(pos < j2k_packets.size()))) {
+        if (is_EOC) {
+            is_EOC    = false;
+            auto& pkt = j2k_packets.back();
+            return packet_t{pkt.data() + jhd + get_body_POS(pkt.data() + rhd), pkt.size() - jhd - get_body_POS(pkt.data() + rhd)};
         } else {
-            if (pos != num_packets) {
-                if (unlikely(J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()))) { throw buffer_leak("ORDB"); }
-                len = static_cast<size_t>(pkt.len - hl);
-            } else {
-                if (unlikely(!J2KPayloadHeader_trait::get_body_ORDB(pkt.data + RTPHeader_trait::get_header_length()))) { throw buffer_leak("ORDB"); }
-                if (is_EOC) {
-                    len = pkt.len;
-                } else {
-                    len = J2KPayloadHeader_trait::get_body_POS(pkt.data + RTPHeader_trait::get_header_length());
-                }
-            }
+            throw buffer_leak("out range");
         }
-    } else {
-        ptr   = cache.data + hl + J2KPayloadHeader_trait::get_body_POS(cache.data + RTPHeader_trait::get_header_length());
-        len   = static_cast<size_t>(cache.len - hl - J2KPayloadHeader_trait::get_body_POS(cache.data + RTPHeader_trait::get_header_length()));
-        cache = {};
     }
+    auto& pkt = j2k_packets[pos++];
+    packet_t::pointer j2k_data;
+    packet_t::size_type j2k_len;
+    if (unlikely(get_MH(pkt.data() + rhd))) {
+        j2k_data = pkt.data() + jhd;
+        j2k_len  = static_cast<size_t>(pkt.size() - jhd);
+    } else {
+        if (pos == 1) {
+            if (!get_body_ORDB(pkt.data() + rhd)) { throw buffer_leak("ORDB"); }
+            j2k_data = pkt.data() + jhd + get_body_POS(pkt.data() + rhd);
+            j2k_len  = pkt.size() - jhd - get_body_POS(pkt.data() + rhd);
+        } else if (pos != j2k_packets.size()) {
+            if (get_body_ORDB(pkt.data() + rhd)) { throw buffer_leak("ORDB"); }
+            j2k_data = pkt.data() + jhd;
+            j2k_len  = pkt.size() - jhd;
+        } else {
+            if (unlikely(!get_body_ORDB(pkt.data() + rhd))) { throw buffer_leak("ORDB"); }
+            j2k_data = pkt.data() + jhd;
+            j2k_len  = get_body_POS(pkt.data() + rhd);
+        }
+    }
+    return packet_t{j2k_data, j2k_len};
 }
