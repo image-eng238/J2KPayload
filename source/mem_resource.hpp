@@ -91,7 +91,7 @@ private:
         if constexpr (is_nothrow_v<Args...>) {
             return tuple_to_array<size_t>(tuple_parse_tail<1>(args...));
         } else {
-            return {static_cast<size_t>(args)...};
+            return std::array<size_t, sizeof...(Args)>{static_cast<size_t>(args)...};
         }
     }
 
