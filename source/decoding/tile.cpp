@@ -23,13 +23,19 @@ void Component::init(const MainHeader& mhd, const Tile& tile, const uint16_t c) 
     pos1 = ceil_int(tile.get_pos1(), rsiz);
 
     for (auto& e : mhd.coc) {
-        if (e->get_component_index() == index) {
-            setCOC(*e, mhd.dfs.data()->get(), mhd.dfs.size());
+        // if (e->get_component_index() == index) {
+        //     setCOC(*e, mhd.dfs.data()->get(), mhd.dfs.size());
+        // }
+        if (e.get_component_index() == index) {
+            setCOC(e, mhd.dfs.data(), mhd.dfs.size());
         }
     }
     for (auto& e : mhd.qcc) {
-        if (e->get_component_index() == index) {
-            setQCC(*e);
+        // if (e->get_component_index() == index) {
+        //     setQCC(*e);
+        // }
+        if (e.get_component_index() == index) {
+            setQCC(e);
         }
     }
 }

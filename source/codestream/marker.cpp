@@ -264,10 +264,10 @@ COM::COM(J2kBuf& in) {
         Ccom[i] = in.get_byte();
 }
 
-MainHeader::MainHeader(J2kBuf& in) {
+MainHeader_old::MainHeader_old(J2kBuf& in) {
     read(std::forward<J2kBuf&>(in));
 }
-void MainHeader::read(J2kBuf& in) {
+void MainHeader_old::read(J2kBuf& in) {
     while (true) {
         switch (const uint16_t type = in.get_byte(2); type) {
             case j2kmk::SOC:
@@ -342,8 +342,8 @@ void MainHeader2::read(J2kBuf& in) {
             case j2kmk::SOT:
                 return;
             case j2kmk::SIZ: {
-                siz.emplace_back(in);
-                const auto Csiz = siz.front().get_Csiz();
+                siz.emplace(in);
+                const auto Csiz = siz->get_Csiz();
                 if (!memory.is_allocated()) {
                     if (!memory.prev_allocate(Csiz, Csiz, std::nothrow)) {
                         fprintf(stderr, "memory allocate failure\n");
@@ -354,19 +354,19 @@ void MainHeader2::read(J2kBuf& in) {
                 qcc.reserve(Csiz);
             } break;
             case j2kmk::CAP:
-                cap.emplace_back(in);
+                cap.emplace(in);
                 break;
             case j2kmk::COD:
-                cod.emplace_back(in);
+                cod.emplace(in);
                 break;
             case j2kmk::COC:
-                coc.emplace_back(in, siz.front().get_Csiz());
+                coc.emplace_back(in, siz->get_Csiz());
                 break;
             case j2kmk::QCD:
-                qcd.emplace_back(in);
+                qcd.emplace(in);
                 break;
             case j2kmk::QCC:
-                qcc.emplace_back(in, siz.front().get_Csiz());
+                qcc.emplace_back(in, siz->get_Csiz());
                 break;
             case j2kmk::DFS:
                 dfs.emplace_back(in);
