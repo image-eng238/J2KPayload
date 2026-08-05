@@ -1,5 +1,34 @@
 #include "RTP_header.hpp"
 
+packet_t RTPReceiver::parse_rtp_header(const packet_t& pkt, int type) {
+    using namespace RTPHeader_trait;
+    using namespace J2KPayloadHeader_trait;
+    const auto rhd = RTPHeader_trait::get_header_length();
+    const auto jhd = rhd + J2KPayloadHeader_trait::get_header_length();
+    packet_t::const_pointer j2k_data;
+    packet_t::size_type j2k_len;
+    switch (type) {
+        case MAIN_PACKET:
+            [[fallthrough]];
+        case BODY_NO_RESYNC:
+            j2k_data = pkt.data() + jhd;
+            j2k_len  = pkt.size() - jhd;
+            break;
+        case BODY_RESYNC_HEAD:
+            j2k_data = pkt.data() + jhd;
+            j2k_len  = get_body_POS(pkt.data() + rhd);
+            break;
+        case BODY_RESYNC_TAIL:
+            j2k_data = pkt.data() + jhd + get_body_POS(pkt.data() + rhd);
+            j2k_len  = pkt.size() - jhd - get_body_POS(pkt.data() + rhd);
+            break;
+        default:
+            assert(false);
+            break;
+    }
+    return {const_cast<packet_t::pointer>(j2k_data), j2k_len};
+}
+
 int32_t RTPReceiver::first_check() {
     using namespace RTPHeader_trait;
     using namespace J2KPayloadHeader_trait;
@@ -122,29 +151,29 @@ int RTPReceiver::load_main_packet() {
     using namespace RTPHeader_trait;
     using namespace J2KPayloadHeader_trait;
     const auto hd = RTPHeader_trait::get_header_length();
-
-    // j2k_packets.clear();
-
-    const packet_t* pkt;
+    packet_t pkt;
 
     while (true) {
 
-        pkt = &j2k_packets.push_back(buffer->pop());
-        if (unlikely(pkt->size() == 1 && RTPHeader_trait::get_V(pkt->data()) != 0b10)) return this->FINISH;
+        pkt = buffer->pop();
+        if (unlikely(pkt.size() == 1 && RTPHeader_trait::get_V(pkt.data()) != 0b10)) return this->FINISH;
 
-        const auto m_seq    = get_extended_sequence_number(pkt->data());
-        pre_sequence_number = m_seq;
+        const auto current_sequence = get_extended_sequence_number(pkt.data());
+        const auto pre_sequence     = pre_sequence_number;
+        pre_sequence_number         = current_sequence;
 
-        if (likely(get_MH(pkt->data() + hd))) { // メインヘッダ出現
-            pkt = &j2k_packets.push_back(buffer->pop());
-
-            const auto b_seq = get_extended_sequence_number(pkt->data());
-
-            if (likely(check_rtp_sequence(m_seq, b_seq))) {
-                pre_sequence_number = b_seq;
+        if (get_MH(pkt.data() + hd)) { // メインヘッダ出現
+            assert(j2k_packets.empty());
+            j2k_packets.push_back(parse_rtp_header(pkt, MAIN_PACKET));
+            continue;
+        } else {
+            if (get_body_ORDB(pkt.data() + hd)) { // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
+                j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_HEAD));
+                j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_TAIL));
+                PID = get_body_PID(pkt.data() + hd);
+                pos = 0;
                 return this->MAIN_HEADER;
             }
-            continue;
         }
     }
 }
@@ -156,55 +185,63 @@ int RTPReceiver::load_body_packet() {
 
     if (!j2k_packets.empty()) {
         j2k_packets.erase(j2k_packets.begin(), j2k_packets.end() - 1);
-        // if (is_EOC) {
-        //     is_EOC = false;
-        //     return this->SUCCESS;
-        // }
     }
 
-    const packet_t* pkt;
+    packet_t pkt;
 
     while (true) {
 
-        pkt = &j2k_packets.push_back(buffer->pop());
-        if (unlikely(pkt->size() == 1 && RTPHeader_trait::get_V(pkt->data()) != 0b10)) return this->FINISH;
+        pkt = buffer->pop();
+        if (unlikely(pkt.size() == 1 && RTPHeader_trait::get_V(pkt.data()) != 0b10)) return this->FINISH;
 
-        const auto sequence     = get_extended_sequence_number(pkt->data());
-        const auto pre_sequence = pre_sequence_number;
-        pre_sequence_number     = sequence;
+        const auto current_sequence = get_extended_sequence_number(pkt.data());
+        const auto pre_sequence     = pre_sequence_number;
+        pre_sequence_number         = current_sequence;
 
-        if (likely(check_rtp_sequence(pre_sequence, sequence))) {
-            if (unlikely(get_MH(pkt->data() + hd))) { // メインヘッダ出現
-                assert(j2k_packets.size() == 1);
-                j2k_packets.clear();
+        if (likely(check_rtp_sequence(pre_sequence, current_sequence))) {
+            if (unlikely(get_MH(pkt.data() + hd))) { // メインヘッダ出現
+                assert(j2k_packets.empty());
+                j2k_packets.push_back(parse_rtp_header(pkt, MAIN_PACKET));
                 continue;
             }
 
-            if (unlikely(get_M(pkt->data()))) {
-                is_EOC = true;
-            } // コードストリーム終端
-
-            if (get_body_ORDB(pkt->data() + hd)) { // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
-                PID = get_body_PID(pkt->data() + hd);
+            if (get_body_ORDB(pkt.data() + hd)) { // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
+                j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_HEAD));
+                j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_TAIL));
                 pos = 0;
+                if (unlikely(get_M(pkt.data()))) {
+                    is_EOC = true;
+                    PID    = 0;
+                } else {
+                    PID = get_body_PID(pkt.data() + hd);
+                }
                 return this->SUCCESS;
+            } else {
+                j2k_packets.push_back(parse_rtp_header(pkt, BODY_NO_RESYNC));
+                if (unlikely(get_M(pkt.data()))) {
+                    is_EOC = true;
+                    PID    = 0;
+                    pos    = 0;
+                    return this->SUCCESS;
+                }
             }
         } else {
-            printf("pre: %d, seq: %d, diff: %d\n", pre_sequence, sequence, sequence - pre_sequence);
+            fprintf(stderr, "pre: %d, seq: %d, diff: %d\n", pre_sequence, current_sequence, current_sequence - pre_sequence);
             // パケットロス発生 次の再同期ポイントまでパケットを破棄
-            if (unlikely(sequence == 0)) {
+            j2k_packets.clear();
+            if (unlikely(current_sequence == 0)) {
                 num_lost_packet = ex_sequence_max - pre_sequence;
             } else {
-                num_lost_packet = sequence - (pre_sequence + 1);
+                num_lost_packet = current_sequence - (pre_sequence + 1);
                 if (num_lost_packet >= buffer->get_buffer_length()) { throw buffer_leak{"RTP seq", buffer_leak::ANALYSISING}; }
             }
             while (true) {
-                auto tmp = buffer->pop();
-                pkt      = &tmp;
-                if (unlikely(pkt->size() == 1 && RTPHeader_trait::get_V(pkt->data()) != 0b10)) return this->FINISH;
-                if (!get_MH(pkt->data() + hd) && get_body_ORDB(pkt->data() + hd)) {
-                    pre_sequence_number = get_extended_sequence_number(pkt->data());
-                    PID                 = get_body_PID(pkt->data() + hd);
+                pkt = buffer->pop();
+                if (unlikely(pkt.size() == 1 && RTPHeader_trait::get_V(pkt.data()) != 0b10)) return this->FINISH;
+                if (!get_MH(pkt.data() + hd) && get_body_ORDB(pkt.data() + hd)) {
+                    pre_sequence_number = get_extended_sequence_number(pkt.data());
+                    PID                 = get_body_PID(pkt.data() + hd);
+                    j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_TAIL));
                     return this->FAILURE;
                 }
             }
@@ -213,40 +250,10 @@ int RTPReceiver::load_body_packet() {
 }
 
 packet_t RTPReceiver::pop() {
-    using namespace RTPHeader_trait;
-    using namespace J2KPayloadHeader_trait;
-    const auto rhd = RTPHeader_trait::get_header_length();
-    const auto jhd = rhd + J2KPayloadHeader_trait::get_header_length();
-
-    if (unlikely(!(pos < j2k_packets.size()))) {
-        if (is_EOC) {
-            is_EOC    = false;
-            auto& pkt = j2k_packets.back();
-            return packet_t{pkt.data() + jhd + get_body_POS(pkt.data() + rhd), pkt.size() - jhd - get_body_POS(pkt.data() + rhd)};
-        } else {
-            throw buffer_leak("out range");
-        }
+    if (unlikely(!(pos < j2k_packets.size()))) { throw buffer_leak("out range"); }
+    auto tmp = j2k_packets[pos++];
+    if (tmp.empty()) {
+        tmp = j2k_packets[pos++];
     }
-    auto& pkt = j2k_packets[pos++];
-    packet_t::pointer j2k_data;
-    packet_t::size_type j2k_len;
-    if (unlikely(get_MH(pkt.data() + rhd))) {
-        j2k_data = pkt.data() + jhd;
-        j2k_len  = static_cast<size_t>(pkt.size() - jhd);
-    } else {
-        if (pos == 1) {
-            if (!get_body_ORDB(pkt.data() + rhd)) { throw buffer_leak("ORDB"); }
-            j2k_data = pkt.data() + jhd + get_body_POS(pkt.data() + rhd);
-            j2k_len  = pkt.size() - jhd - get_body_POS(pkt.data() + rhd);
-        } else if (pos != j2k_packets.size()) {
-            if (get_body_ORDB(pkt.data() + rhd)) { throw buffer_leak("ORDB"); }
-            j2k_data = pkt.data() + jhd;
-            j2k_len  = pkt.size() - jhd;
-        } else {
-            if (unlikely(!get_body_ORDB(pkt.data() + rhd))) { throw buffer_leak("ORDB"); }
-            j2k_data = pkt.data() + jhd;
-            j2k_len  = get_body_POS(pkt.data() + rhd);
-        }
-    }
-    return packet_t{j2k_data, j2k_len};
+    return tmp;
 }

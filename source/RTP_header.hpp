@@ -375,6 +375,12 @@ public:
         MAIN_HEADER = 2,
         FINISH      = 3,
     };
+    enum {
+        MAIN_PACKET,
+        BODY_NO_RESYNC,
+        BODY_RESYNC_HEAD,
+        BODY_RESYNC_TAIL
+    };
 
     int32_t first_check();
     int32_t check();
@@ -383,6 +389,11 @@ public:
     int load_main_packet();
     int load_body_packet();
     packet_t pop();
+    void terminate() {
+        pos    = 0;
+        is_EOC = false;
+        j2k_packets.clear();
+    }
 
     uint32_t get_last_sequence_number() const { return pre_sequence_number; }
     void set_last_sequence_number(const uint32_t in) { pre_sequence_number = in; }
@@ -392,6 +403,7 @@ public:
     static bool check_rtp_sequence(uint32_t prev, uint32_t current) {
         return (current == prev + 1) || (prev == 0 && current == 1) || (prev == J2KPayloadHeader_trait::ex_sequence_max || current == 0);
     }
+    static packet_t parse_rtp_header(const packet_t&, int);
 
 private:
     leaky_bucket_buf* buffer;
