@@ -271,7 +271,7 @@ namespace J2KPayloadHeader_trait {
                 -1,
                 -1,
                 -1,
-                -1
+                static_cast<int>(J2KPayloadHeader_trait::get_extended_sequence_number(pointer))
             );
         }
         fflush(fp);
