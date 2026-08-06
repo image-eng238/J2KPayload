@@ -1,4 +1,5 @@
 #include "RTP_header.hpp"
+#include <cstring>
 
 packet_t RTPReceiver::parse_rtp_header(const packet_t& pkt, int type) {
     using namespace RTPHeader_trait;
@@ -147,7 +148,7 @@ void RTPReceiver::pop(uint8_t*& ptr, size_t& len) {
     }
 }
 
-int RTPReceiver::load_main_packet() {
+int RTPReceiver::load_main_packet(packet_t* const copy_main_pkt) {
     using namespace RTPHeader_trait;
     using namespace J2KPayloadHeader_trait;
     const auto hd = RTPHeader_trait::get_header_length();
@@ -165,6 +166,12 @@ int RTPReceiver::load_main_packet() {
         if (get_MH(pkt.data() + hd)) { // メインヘッダ出現
             assert(j2k_packets.empty());
             j2k_packets.push_back(parse_rtp_header(pkt, MAIN_PACKET));
+            if (copy_main_pkt != nullptr) {
+                const auto* const m_pkt = &j2k_packets.back();
+                assert(m_pkt->size() <= copy_main_pkt->size());
+                memcpy(copy_main_pkt->data(), m_pkt->data(), m_pkt->size());
+                copy_main_pkt->len = m_pkt->size();
+            }
             continue;
         } else {
             if (get_body_ORDB(pkt.data() + hd)) { // 再同期ポイントが出現した場合 J2K パケットの解析が可能に

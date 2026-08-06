@@ -386,7 +386,7 @@ public:
     int32_t check();
     void pop(uint8_t*&, size_t&);
 
-    int load_main_packet();
+    int load_main_packet(packet_t* const copy_main_pkt = nullptr);
     int load_body_packet();
     packet_t pop();
     void terminate() {
