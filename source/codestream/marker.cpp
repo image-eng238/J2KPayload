@@ -344,12 +344,6 @@ void MainHeader2::read(J2kBuf& in) {
             case j2kmk::SIZ: {
                 siz.emplace(in);
                 const auto Csiz = siz->get_Csiz();
-                if (!memory.is_allocated()) {
-                    if (!memory.prev_allocate(Csiz, Csiz, std::nothrow)) {
-                        fprintf(stderr, "memory allocate failure\n");
-                        exit(1);
-                    }
-                }
                 coc.reserve(Csiz);
                 qcc.reserve(Csiz);
             } break;

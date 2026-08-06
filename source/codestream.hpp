@@ -533,16 +533,15 @@ public:
 };
 
 struct MainHeader2 {
-    MainHeader2() : memory{}, siz{}, cap{}, cod{}, coc{&memory}, qcd{}, qcc{&memory}, dfs{} {}
+    MainHeader2() : siz{}, cap{}, cod{}, coc{}, qcd{}, qcc{}, dfs{} {}
     void read(J2kBuf&);
 
-    j2k_resource<COC, QCC> memory;
     std::optional<SIZ> siz;
     std::optional<CAP> cap;
     std::optional<COD> cod;
-    std::pmr::vector<COC> coc;
+    fixed_capacity_vector<COC, 4> coc;
     std::optional<QCD> qcd;
-    std::pmr::vector<QCC> qcc;
+    fixed_capacity_vector<QCC, 4> qcc;
     // fixed_capacity_vector<ATK,1> atk;
     fixed_capacity_vector<DFS, 2> dfs;
     // std::optional<CBD> cbd;
