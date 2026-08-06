@@ -22,26 +22,26 @@ struct pointer_with_length {
     size_type len;
 
     constexpr reference at(size_type n) {
-        if (n >= len) {
+        if (n >= size()) {
             throw std::out_of_range{"pointer_with_lengh::at: n"};
         }
-        return ptr[n];
+        return data()[n];
     }
     constexpr const_reference at(size_type n) const {
-        if (n >= len) {
+        if (n >= size()) {
             throw std::out_of_range{"pointer_with_lengh::at: n"};
         }
-        return ptr[n];
+        return data()[n];
     }
 
-    constexpr reference operator[](size_type n) noexcept { return ptr[n]; }
-    constexpr const_reference operator[](size_type n) const noexcept { return ptr[n]; }
+    constexpr reference operator[](size_type n) noexcept { return data()[n]; }
+    constexpr const_reference operator[](size_type n) const noexcept { return data()[n]; }
 
-    constexpr reference front() noexcept { return ptr[static_cast<size_type>(0)]; }
-    constexpr const_reference front() const noexcept { return ptr[static_cast<size_type>(0)]; }
+    constexpr reference front() noexcept { return data()[static_cast<size_type>(0)]; }
+    constexpr const_reference front() const noexcept { return data()[static_cast<size_type>(0)]; }
 
-    constexpr reference back() noexcept { return ptr[len - 1]; }
-    constexpr const_reference back() const noexcept { return ptr[len - 1]; }
+    constexpr reference back() noexcept { return data()[size() - 1]; }
+    constexpr const_reference back() const noexcept { return data()[size() - 1]; }
 
     constexpr pointer data() noexcept { return static_cast<pointer>(ptr); }
     constexpr const_pointer data() const noexcept { return static_cast<const_pointer>(ptr); }
@@ -49,8 +49,8 @@ struct pointer_with_length {
     constexpr iterator begin() noexcept { return iterator(data()); }
     constexpr const_iterator begin() const noexcept { return const_iterator(data()); }
 
-    constexpr iterator end() noexcept { return iterator(data() + len); }
-    constexpr const_iterator end() const noexcept { return const_iterator(data() + len); }
+    constexpr iterator end() noexcept { return iterator(data() + size()); }
+    constexpr const_iterator end() const noexcept { return const_iterator(data() + size()); }
 
     constexpr reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
     constexpr const_reverse_iterator rbegin() const noexcept { return const_reverse_iterator(end()); }
@@ -60,7 +60,7 @@ struct pointer_with_length {
 
     constexpr const_iterator cbegin() const noexcept { return const_iterator(data()); }
 
-    constexpr const_iterator cend() const noexcept { return const_iterator(data() + len); }
+    constexpr const_iterator cend() const noexcept { return const_iterator(data() + size()); }
 
     constexpr const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(end()); }
 
