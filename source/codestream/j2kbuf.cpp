@@ -156,7 +156,10 @@ void J2kBuf::termination_check(const size_t& n) {
 }
 void J2kBuf::receive() {
     assert(recv != nullptr);
-    byte_pos = 0;
-    bit_pos  = 0x80;
-    recv->pop(buf_ptr, buf_length);
+    byte_pos   = 0;
+    bit_pos    = 0x80;
+    // recv->pop(buf_ptr, buf_length);
+    auto tmp   = recv->pop();
+    buf_ptr    = tmp.data();
+    buf_length = tmp.size();
 }

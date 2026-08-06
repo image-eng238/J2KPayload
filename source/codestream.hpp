@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <optional>
 #include "multi_memory.hpp"
 #include "const_value.hpp"
 
@@ -479,7 +480,7 @@ private:
     std::vector<uint8_t> data; // 不明なマーカー内のデータを保存
 };
 
-struct MainHeader {
+struct MainHeader_old {
 private:
     static constexpr size_t stack_size = [] {
         size_t out = 0;
@@ -503,8 +504,8 @@ private:
     MultiMem::static_memory<stack_size> mem;
 
 public:
-    MainHeader() {}
-    MainHeader(J2kBuf&);
+    MainHeader_old() {}
+    MainHeader_old(J2kBuf&);
     void read(J2kBuf&);
     bool empty() { return !siz.operator bool(); }
     MultiMem::multi_ptr<SIZ> siz;
@@ -532,20 +533,22 @@ public:
 };
 
 struct MainHeader2 {
-    MainHeader2() : memory{}, siz{}, cap{}, cod{}, coc{&memory}, qcd{}, qcc{&memory}, dfs{} {}
+    MainHeader2() : siz{}, cap{}, cod{}, coc{}, qcd{}, qcc{}, dfs{} {}
     void read(J2kBuf&);
 
-    j2k_resource<COC, QCC> memory;
-    fixed_capacity_vector<SIZ, 1> siz;
-    fixed_capacity_vector<CAP, 1> cap;
-    fixed_capacity_vector<COD, 1> cod;
-    std::pmr::vector<COC> coc;
-    fixed_capacity_vector<QCD, 1> qcd;
-    std::pmr::vector<QCC> qcc;
+    std::optional<SIZ> siz;
+    std::optional<CAP> cap;
+    std::optional<COD> cod;
+    fixed_capacity_vector<COC, 4> coc;
+    std::optional<QCD> qcd;
+    fixed_capacity_vector<QCC, 4> qcc;
     // fixed_capacity_vector<ATK,1> atk;
     fixed_capacity_vector<DFS, 2> dfs;
-    // fixed_capacity_vector<CBD,0>cbd ;
-    // fixed_capacity_vector<MCT, 0> mct;
-    // fixed_capacity_vector<MCO, 0> mco;
-    // fixed_capacity_vector<MCC, 0> mcc;
+    // std::optional<CBD> cbd;
+    // std::optional<MCT> mct;
+    // std::optional<MCO> mco;
+    // std::optional<MCC> mcc;
 };
+
+// using MainHeader = MainHeader_old;
+using MainHeader = MainHeader2;

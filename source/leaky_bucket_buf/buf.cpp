@@ -121,13 +121,24 @@ void leaky_bucket_buf::push(const uint8_t* const src, const int len) {
     }
 }
 
+int leaky_bucket_buf::get(uint8_t*& ptr) {
+    const auto out = get_impl(ptr, false);
+    if (out == 0) throw buffer_leak("empty paket popping", buffer_leak::EMPTY_POP);
+    return out;
+};
+int leaky_bucket_buf::get_noexcept(uint8_t*& ptr) noexcept { return get_impl(ptr, false); };
+
 int leaky_bucket_buf::pop(uint8_t*& ptr) {
-    const auto out = pop_impl(ptr);
+    const auto out = get_impl(ptr, true);
     if (out == 0) throw buffer_leak("empty paket popping", buffer_leak::EMPTY_POP);
     return out;
 }
-int leaky_bucket_buf::pop_noexcept(uint8_t*& ptr) noexcept { return pop_impl(ptr); }
-int leaky_bucket_buf::pop_impl(uint8_t*& ptr) {
+int leaky_bucket_buf::pop_noexcept(uint8_t*& ptr) noexcept { return get_impl(ptr, true); }
+void leaky_bucket_buf::advance() {
+    next_pop->data_size = 0;
+    link_list::advance(next_pop);
+}
+int leaky_bucket_buf::get_impl(uint8_t*& ptr, bool is_advance) {
     auto pred = [this]() -> bool { return current_num_data > 0; };
     std::unique_lock lk(mtx, std::defer_lock);
     if constexpr (NO_BLOCKING_MTX) {
@@ -145,12 +156,13 @@ int leaky_bucket_buf::pop_impl(uint8_t*& ptr) {
         cond.wait(lk, pred);
         --current_num_data;
     }
-    auto popping       = next_pop;
-    auto out           = popping->data_size;
-    ptr                = popping->data;
-    popping->data_size = 0;
+    auto popping = next_pop;
+    auto out     = popping->data_size;
+    ptr          = popping->data;
 
-    link_list::advance(next_pop);
+    if (is_advance) {
+        advance();
+    }
 
     return out;
 }
