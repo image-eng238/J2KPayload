@@ -22,3 +22,11 @@ namespace ConstValue {
         max_image_size = 1048575,
     };
 }
+
+enum j2kprf {
+    Csiz_max    = 4,
+    Subband_max = 12,
+    dfs_max     = 2,
+
+    NL = 5,
+};
