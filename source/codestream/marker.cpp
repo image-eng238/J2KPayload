@@ -36,9 +36,9 @@ SIZ::SIZ(J2kBuf& in) {
     YTOsiz = in.get_byte(4);
     Csiz   = in.get_byte(2);
     for (uint16_t i = 0; i < Csiz; ++i) {
-        Ssiz[i]  = in.get_byte();
-        XRsiz[i] = in.get_byte();
-        YRsiz[i] = in.get_byte();
+        Ssiz.push_back(in.get_byte());
+        XRsiz.push_back(in.get_byte());
+        YRsiz.push_back(in.get_byte());
     }
 #ifdef GEN_PROPERTIES
     printf("> SIZ\n");
@@ -170,10 +170,10 @@ QCD::QCD(J2kBuf& in) {
     Sqcd                  = in.get_byte();
     if (get_quantization_style() == 0) {
         for (uint16_t i = 0; i < length - 3; ++i)
-            SPqcd[i] = in.get_byte(2);
+            SPqcd.push_back(in.get_byte(2));
     } else {
         for (uint16_t i = 0; i < (length - 3) / 2; ++i)
-            SPqcd[i] = in.get_byte(2);
+            SPqcd.push_back(in.get_byte(2));
     }
 }
 uint8_t QCD::get_quantization_style() const { return Sqcd & 0b0001'1111; }
@@ -211,10 +211,10 @@ QCC::QCC(J2kBuf& in, const uint16_t Csiz) {
     Sqcc = in.get_byte();
     if (get_quantization_style() == 0) {
         for (uint16_t i = 0; i < length - (3 + 1); ++i)
-            SPqcc[i] = in.get_byte();
+            SPqcc.push_back(in.get_byte());
     } else {
         for (uint16_t i = 0; i < (length - (3 + n)) / 2; ++i)
-            SPqcc[i] = in.get_byte(2);
+            SPqcc.push_back(in.get_byte(2));
     }
 }
 uint8_t QCC::get_component_index() const { return Cqcc; }

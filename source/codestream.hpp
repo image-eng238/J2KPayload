@@ -247,14 +247,14 @@ public:
     bool useDFS() const;
 
 private:
-    uint16_t Rsiz;                                      // Profile規定
-    uint32_t Xsiz, Ysiz;                                // reference gridのサイズ
-    uint32_t XOsiz, YOsiz;                              // reference gridの原点から左上端へのオフセット
-    uint32_t XTsiz, YTsiz;                              // reference gridに対するタイルのサイズ
-    uint32_t XTOsiz, YTOsiz;                            // reference gridの原点から先頭タイルまでのオフセット
-    uint16_t Csiz;                                      // 画像中のコンポーネント数
-    std::array<uint8_t, ConstValue::Csiz> Ssiz;         // ビット深度
-    std::array<uint8_t, ConstValue::Csiz> XRsiz, YRsiz; // reference gridに対して何サンプル離れているか
+    uint16_t Rsiz;                                                 // Profile規定
+    uint32_t Xsiz, Ysiz;                                           // reference gridのサイズ
+    uint32_t XOsiz, YOsiz;                                         // reference gridの原点から左上端へのオフセット
+    uint32_t XTsiz, YTsiz;                                         // reference gridに対するタイルのサイズ
+    uint32_t XTOsiz, YTOsiz;                                       // reference gridの原点から先頭タイルまでのオフセット
+    uint16_t Csiz;                                                 // 画像中のコンポーネント数
+    fixed_capacity_vector<uint8_t, j2kprf::Csiz_max> Ssiz;         // ビット深度
+    fixed_capacity_vector<uint8_t, j2kprf::Csiz_max> XRsiz, YRsiz; // reference gridに対して何サンプル離れているか
     // siz-TOsizでreference gridと先頭タイルの左上が重なる
     // HTJ2Kでは,Rsizの14bitは1 (Rsiz | 0b0100 0000 0000 0000)
     // Rsiz が 1x00 xxxx xx1x xxxxのときDFS使用
@@ -288,9 +288,9 @@ public:
     void get_precinct_size(pos2D&, const uint8_t) const;
 
 private:
-    uint8_t Scod;                                       // すべてのコンポーネントに対する符号化スタイル
-    uint32_t SGcod;                                     // Scodで指定された符号化スタイル用のパラメータ コンポーネントに依存しない
-    std::array<uint8_t, 5 + ConstValue::N_L + 1> SPcod; // Scodで指定された符号化スタイル用のパラメータ すべてのコンポーネントに関係
+    uint8_t Scod;                                  // すべてのコンポーネントに対する符号化スタイル
+    uint32_t SGcod;                                // Scodで指定された符号化スタイル用のパラメータ コンポーネントに依存しない
+    std::array<uint8_t, 5 + j2kprf::NL + 1> SPcod; // Scodで指定された符号化スタイル用のパラメータ すべてのコンポーネントに関係
     /*
     // Scod
     bool precinct_type; // エントロピー符号で使用するpricinct
@@ -326,9 +326,9 @@ public:
     void get_precinct_size(pos2D&, const uint8_t) const;
 
 private:
-    uint16_t Ccoc;                                      // COCマーカーが関係するコンポーネントのインデックス
-    uint8_t Scoc;                                       // 本コンポーネントに対する符号化スタイル
-    std::array<uint8_t, 5 + ConstValue::N_L + 1> SPcoc; // Scocで指定された符号化スタイル用のパラメータ
+    uint16_t Ccoc;                                 // COCマーカーが関係するコンポーネントのインデックス
+    uint8_t Scoc;                                  // 本コンポーネントに対する符号化スタイル
+    std::array<uint8_t, 5 + j2kprf::NL + 1> SPcoc; // Scocで指定された符号化スタイル用のパラメータ
 };
 
 class RGN {
@@ -348,8 +348,8 @@ public:
     uint16_t get_quantization_step_size_mantissa(const uint8_t) const;
 
 private:
-    uint8_t Sqcd;                                        // すべてのコンポーネントに対する量子化スタイル
-    std::array<uint16_t, ConstValue::num_subband> SPqcd; // i番目のサブバンドに対する量子化ステップ数
+    uint8_t Sqcd;                                               // すべてのコンポーネントに対する量子化スタイル
+    fixed_capacity_vector<uint16_t, j2kprf::Subband_max> SPqcd; // i番目のサブバンドに対する量子化ステップ数
     // サブバンド数は10
 };
 
@@ -364,9 +364,9 @@ public:
     uint16_t get_quantization_step_size_mantissa(const uint8_t) const;
 
 private:
-    uint16_t Cqcc;                                       //
-    uint8_t Sqcc;                                        //
-    std::array<uint16_t, ConstValue::num_subband> SPqcc; //
+    uint16_t Cqcc;                                              //
+    uint8_t Sqcc;                                               //
+    fixed_capacity_vector<uint16_t, j2kprf::Subband_max> SPqcc; //
 };
 
 class POC {
@@ -431,10 +431,10 @@ public:
     const uint8_t* get_Ddfs_data() const;
 
 private:
-    uint16_t Sdfs;                                 // このDFSマーカーセグメントのインデックス メインヘッダーのCOD,COCを介してコンポーネントに関連付けられる
-                                                   // ->DFSが関連図けられるメインヘッダーのCOD,COCのインデックス,ここの値が1ならインデックスが1のコンポーネントにDFSを関連図ける
-    uint8_t Idfs;                                  // Ddfsの要素数
-    std::array<uint8_t, ConstValue::N_L + 1> Ddfs; // 各解像度におけるフィルタの方向 01:both 10:H(row) 11:V(col)
+    uint16_t Sdfs;                            // このDFSマーカーセグメントのインデックス メインヘッダーのCOD,COCを介してコンポーネントに関連付けられる
+                                              // ->DFSが関連図けられるメインヘッダーのCOD,COCのインデックス,ここの値が1ならインデックスが1のコンポーネントにDFSを関連図ける
+    uint8_t Idfs;                             // Ddfsの要素数
+    std::array<uint8_t, j2kprf::NL + 1> Ddfs; // 各解像度におけるフィルタの方向 01:both 10:H(row) 11:V(col)
 };
 
 class SOP {
@@ -539,11 +539,11 @@ struct MainHeader2 {
     std::optional<SIZ> siz;
     std::optional<CAP> cap;
     std::optional<COD> cod;
-    fixed_capacity_vector<COC, 4> coc;
+    fixed_capacity_vector<COC, j2kprf::Csiz_max> coc;
     std::optional<QCD> qcd;
-    fixed_capacity_vector<QCC, 4> qcc;
+    fixed_capacity_vector<QCC, j2kprf::Csiz_max> qcc;
     // fixed_capacity_vector<ATK,1> atk;
-    fixed_capacity_vector<DFS, 2> dfs;
+    fixed_capacity_vector<DFS, j2kprf::dfs_max> dfs;
     // std::optional<CBD> cbd;
     // std::optional<MCT> mct;
     // std::optional<MCO> mco;
