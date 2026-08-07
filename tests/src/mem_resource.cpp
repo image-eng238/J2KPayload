@@ -1,6 +1,8 @@
 #include "mem_resource.hpp"
 #include <vector>
 
+class Defer;
+
 int main() {
     j2k_resource<int, char, size_t> memory;
     if (!memory.prev_allocate(16, 2, 3, std::nothrow)) {
@@ -16,6 +18,11 @@ int main() {
         std::pmr::vector<size_t> vec_size_t(&memory);
         vec_size_t.reserve(3);
     }
+    {
+        // j2k_resource<Defer> m; 型の定義に完全型が必要
+    }
 
     return 0;
 }
+
+class Defer {};
