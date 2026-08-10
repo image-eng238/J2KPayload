@@ -37,8 +37,7 @@ SIZ::SIZ(J2kBuf& in) {
     Csiz   = in.get_byte(2);
     for (uint16_t i = 0; i < Csiz; ++i) {
         Ssiz.push_back(in.get_byte());
-        XRsiz.push_back(in.get_byte());
-        YRsiz.push_back(in.get_byte());
+        XYRsiz.emplace_back(Postion2D{in.get_byte(), in.get_byte()});
     }
 #ifdef GEN_PROPERTIES
     printf("> SIZ\n");
@@ -87,9 +86,9 @@ uint8_t SIZ::get_Ssiz(uint16_t c) const { return Ssiz[c]; }
 bool SIZ::is_signed_component_sample(uint16_t c) const { return Ssiz[c] >> 7; }
 uint8_t SIZ::get_bit_depth(uint16_t c) const { return (Ssiz[c] & 0x7F) + 1; }
 void SIZ::get_Rsiz(Postion2D<uint32_t>& in, uint16_t c) const {
-    in.x = XRsiz[c];
-    in.y = YRsiz[c];
+    in = XYRsiz[c];
 }
+Postion2D<uint8_t> SIZ::get_Rsiz(uint16_t c) const { return XYRsiz[c]; };
 bool SIZ::useDFS() const { return static_cast<bool>((Rsiz & 0x8000) && (~Rsiz & 0x3000) && (Rsiz & 0x0020)); }
 
 CAP::CAP(J2kBuf& in) {
@@ -107,6 +106,7 @@ COD::COD(J2kBuf& in) {
     for (uint16_t i = 0; i < length - 7; ++i)
         SPcod[i] = in.get_byte();
 }
+uint8_t COD::get_coding_style() const { return Scod; };
 bool COD::get_precinct_type() const { return Scod & 0b0000'0001; }
 bool COD::get_is_SOP() const { return Scod & 0b0000'0010; }
 bool COD::get_is_EPH() const { return Scod & 0b0000'0100; }
@@ -146,6 +146,7 @@ COC::COC(J2kBuf& in, const uint16_t Csiz) {
 }
 uint16_t COC::get_component_index() const { return Ccoc; }
 uint8_t COC::get_coding_style() const { return Scoc; }
+bool COC::get_precinct_type() const { return Scoc & 0b0000'0001; }
 uint8_t COC::get_decomposition_level() const { return SPcoc[0]; }
 void COC::get_codeblock_size(pos2D& in) const {
     in.x = 1 << (SPcoc[1] + 2);

@@ -241,20 +241,21 @@ public:
     bool is_signed_component_sample(uint16_t) const;
     uint8_t get_bit_depth(uint16_t) const;
     void get_Rsiz(Postion2D<uint32_t>&, uint16_t) const;
+    Postion2D<uint8_t> get_Rsiz(uint16_t) const;
 
     // Profile規定のチェック
 
     bool useDFS() const;
 
 private:
-    uint16_t Rsiz;                                                 // Profile規定
-    uint32_t Xsiz, Ysiz;                                           // reference gridのサイズ
-    uint32_t XOsiz, YOsiz;                                         // reference gridの原点から左上端へのオフセット
-    uint32_t XTsiz, YTsiz;                                         // reference gridに対するタイルのサイズ
-    uint32_t XTOsiz, YTOsiz;                                       // reference gridの原点から先頭タイルまでのオフセット
-    uint16_t Csiz;                                                 // 画像中のコンポーネント数
-    fixed_capacity_vector<uint8_t, j2kprf::Csiz_max> Ssiz;         // ビット深度
-    fixed_capacity_vector<uint8_t, j2kprf::Csiz_max> XRsiz, YRsiz; // reference gridに対して何サンプル離れているか
+    uint16_t Rsiz;                                                      // Profile規定
+    uint32_t Xsiz, Ysiz;                                                // reference gridのサイズ
+    uint32_t XOsiz, YOsiz;                                              // reference gridの原点から左上端へのオフセット
+    uint32_t XTsiz, YTsiz;                                              // reference gridに対するタイルのサイズ
+    uint32_t XTOsiz, YTOsiz;                                            // reference gridの原点から先頭タイルまでのオフセット
+    uint16_t Csiz;                                                      // 画像中のコンポーネント数
+    fixed_capacity_vector<uint8_t, j2kprf::Csiz_max> Ssiz;              // ビット深度
+    fixed_capacity_vector<Postion2D<uint8_t>, j2kprf::Csiz_max> XYRsiz; // reference gridに対して何サンプル離れているか
     // siz-TOsizでreference gridと先頭タイルの左上が重なる
     // HTJ2Kでは,Rsizの14bitは1 (Rsiz | 0b0100 0000 0000 0000)
     // Rsiz が 1x00 xxxx xx1x xxxxのときDFS使用
@@ -275,6 +276,7 @@ class COD {
 public:
     COD(J2kBuf&);
 
+    uint8_t get_coding_style() const;
     bool get_precinct_type() const;
     bool get_is_SOP() const;
     bool get_is_EPH() const;
@@ -319,6 +321,7 @@ public:
 
     uint16_t get_component_index() const;
     uint8_t get_coding_style() const;
+    bool get_precinct_type() const;
     uint8_t get_decomposition_level() const;
     void get_codeblock_size(pos2D&) const;
     uint8_t get_codeblock_style() const;
@@ -329,6 +332,20 @@ private:
     uint16_t Ccoc;                                 // COCマーカーが関係するコンポーネントのインデックス
     uint8_t Scoc;                                  // 本コンポーネントに対する符号化スタイル
     std::array<uint8_t, 5 + j2kprf::NL + 1> SPcoc; // Scocで指定された符号化スタイル用のパラメータ
+};
+
+template <typename C>
+class CodeingStyle {
+    const C& co;
+
+public:
+    CodeingStyle(const C& c) : co{c} {}
+    bool is_PP15() const { return !co.get_precinct_type(); }
+    uint8_t get_decomposition_level() const { return co.get_decomposition_level(); }
+    void get_codeblock_size(pos2D& in) const { co.get_codeblock_size(in); }
+    uint8_t get_codeblock_style() const { return co.get_codeblock_style(); }
+    uint8_t get_transformation() const { return co.get_transformation(); }
+    void get_precinct_size(pos2D& in, const uint8_t resolution) const { co.get_precinct_size(in, resolution); }
 };
 
 class RGN {
