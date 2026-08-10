@@ -119,6 +119,7 @@ public:
         this->offsets        = other.offsets;
         this->end_offsets    = other.end_offsets;
         this->memory_pointer = std::exchange(other.memory_pointer, nullptr);
+        return *this;
     }
 
     void* do_allocate(std::size_t bytes, std::size_t alignment) override {
