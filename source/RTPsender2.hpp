@@ -17,9 +17,9 @@ public:
             exit(1);
         }
     }
-    bool load(const std::string_view f) {
+    bool load(const std::string_view f, std::uintmax_t max_alloc_size = UINTMAX_MAX) {
         if (!std::filesystem::exists(f)) return false;
-        siz        = std::filesystem::file_size(f);
+        siz        = std::min(std::filesystem::file_size(f), max_alloc_size);
         codestream = std::make_unique<uint8_t[]>(siz);
         FILE* fp   = fopen(f.data(), "r");
         if (fp == nullptr) {
@@ -32,15 +32,18 @@ public:
         }
 
         const size_t hd = 4;
-        for (uintmax_t i = 0; i != siz;) {
+        for (uintmax_t i = 0; i < siz;) {
             uint8_t* const pktdata = codestream.get() + i;
             if (pktdata[0] != 0xFF || pktdata[1] != 0xFF) {
                 return false;
             }
             const size_t pktsiz = (pktdata[2] << 8) | pktdata[3];
-            packets.push_back(packet_t{pktdata + hd, pktsiz});
-            if (RTPHeader_trait::get_M(packets.back().data())) ++frames;
-            i += pktsiz + hd;
+            if (i += pktsiz + hd; i < siz) {
+                packets.push_back(packet_t{pktdata + hd, pktsiz});
+                if (RTPHeader_trait::get_M(packets.back().data())) ++frames;
+            } else {
+                break;
+            }
         }
         return true;
     }
