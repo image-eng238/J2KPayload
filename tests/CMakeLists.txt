@@ -5,4 +5,4 @@ add_executable(test_fixed_capacity_vector ./src/fixed_capacity_vector.cpp)
 add_executable(test_packet_t ./src/packet_t.cpp)
 
 add_executable(test_decoding_unit ./src/decoding_unit.cpp)
-target_link_libraries(test_decoding_unit CodeStream Decoding LeakyBucket RTP_header)
+target_link_libraries(test_decoding_unit CodeStream Decoding_unit LeakyBucket RTP_header)
