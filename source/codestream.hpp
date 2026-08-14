@@ -446,6 +446,27 @@ public:
     uint8_t get_Idfs() const;
     uint8_t get_Ddfs(const uint8_t) const;
     const uint8_t* get_Ddfs_data() const;
+    uint8_t total_subband() const {
+        uint8_t out = 1;
+        for (uint8_t i = 1; i < Ddfs.size(); ++i) {
+            if (Ddfs[i] & 0b10) {
+                out += 1;
+            } else {
+                out += 3;
+            }
+        }
+        return out;
+    }
+    void ceil_NL(uint8_t& x, uint8_t& y) const {
+        auto NL = Ddfs.size() - 1;
+        assert(x == y || x < NL);
+        for (; x < NL; ++x) {
+            if (Ddfs[x + 1] != 0b11) break;
+        }
+        for (; y < NL; ++y) {
+            if (Ddfs[y + 1] != 0b10) break;
+        }
+    }
 
 private:
     uint16_t Sdfs;                            // このDFSマーカーセグメントのインデックス メインヘッダーのCOD,COCを介してコンポーネントに関連付けられる
