@@ -27,10 +27,20 @@ class j2k_PrecinctSubband {};
 
 class j2k_Precinct {
     fixed_capacity_vector<j2k_PrecinctSubband, 3> pband;
+    j2k_region<uint32_t> region;
+    uint32_t index;
+
+    uint8_t num_subband;
+
+public:
+    j2k_Precinct(const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint32_t idx, uint8_t ns);
 };
 
 class j2k_Subband {
     j2k_region<uint32_t> region;
+    j2k_Component* parent_component;
+    j2k_Resolution* parent_resolution;
+    uint8_t position;
 
 public:
     j2k_Subband();
