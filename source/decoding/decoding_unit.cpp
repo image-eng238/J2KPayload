@@ -1,20 +1,33 @@
 #include "decoding_unit.hpp"
 #include "codestream.hpp"
 
-j2k_Precinct::j2k_Precinct(const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint32_t idx, uint8_t ns)
-    : region{rgn}, index{idx}, num_subband{ns} {
+j2k_CodeBlock::j2k_CodeBlock(const j2k_region<uint32_t> rgn, uint8_t spos)
+    : region{rgn}, codeblock_data{}, length{}, number_of_zbp{}, band_pos{spos} {}
 
-    for ()
+j2k_Precinct::j2k_Precinct(const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint8_t ns)
+    : region{rgn}, PID{} {
+
+    const pos2D ob[4] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
+    pband.reserve(ns);
+    for (uint8_t i = 0; i < ns; ++i) {
+        const uint8_t spos = 0;
+        const uint8_t sr   = (spos == 0) ? 1 << 0 : 1 << 1;
+
+        const pos2D pb_pos0 = ceil_int(region.pos0 - ob[spos], sr);
+        const pos2D pb_pos1 = ceil_int(region.pos1 - ob[spos], sr);
+        pband.emplace_back(j2k_CodeBlock{j2k_region<uint32_t>{pb_pos0, pb_pos1}, spos});
+    }
 }
 
-j2k_Subband::j2k_Subband() {
+j2k_Subband::j2k_Subband(const j2k_Component& cmp, const j2k_Resolution& rsl, const j2k_region<uint32_t>& rgn, uint8_t pos)
+    : parent_component{&cmp}, parent_resolution{&rsl}, region{rgn}, position{pos} {
 }
 
 j2k_Resolution::j2k_Resolution(j2k_Tile& tile, const j2k_Component& cmp, const DFS& dfs, uint8_t nl)
     : precincts{tile.resource_ptr()}, resolution_level{nl}, df_direction{dfs.get_Ddfs(nl)} {
     uint8_t rx = resolution_level, ry = resolution_level;
     dfs.ceil_NL(rx, ry);
-    const auto d     = pos2D{1u << rx, 1u << ry};
+    const auto d     = pos2D{1u << j2kprf::NL - rx, 1u << j2kprf::NL - ry};
     const auto ppow2 = cmp.acs_psizes()[resolution_level].pow2();
     region.pos0      = ceil_int(cmp.get_region().pos0, d);
     region.pos1      = ceil_int(cmp.get_region().pos1, d);
@@ -23,27 +36,30 @@ j2k_Resolution::j2k_Resolution(j2k_Tile& tile, const j2k_Component& cmp, const D
     uint8_t num_subband = (resolution_level != 0) ? 3 : 1;
     if (df_direction != 0 && df_direction & 0b10) num_subband = 1;
 
-    {
-        const pos2D ob[4]     = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
-        const uint8_t gain[4] = {0, 1, 1, 2};
-        const uint8_t nb      = j2kprf::NL + 1 - resolution_level - !resolution_level;
-        const uint8_t b_pos   = !!resolution_level + df_direction & 0b01;
-        for (uint8_t sb = 0; sb < num_subband; ++sb) {
-
-            subbands.emplace_back();
-        }
+    const pos2D ob[4]     = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
+    const uint8_t gain[4] = {0, 1, 1, 2};
+    const uint8_t nb      = j2kprf::NL + 1 - resolution_level - !resolution_level;
+    uint8_t b_pos         = !!resolution_level + df_direction & 0b01;
+    for (uint8_t sb = 0; sb < num_subband; ++sb) {
+        const pos2D sb_pos0 = ceil_int(cmp.get_region().pos0 - (ob[b_pos] * (1 << (nb - 1))), 1 << nb);
+        const pos2D sb_pos1 = ceil_int(cmp.get_region().pos1 - (ob[b_pos] * (1 << (nb - 1))), 1 << nb);
+        subbands.emplace_back(cmp, *this, j2k_region<uint32_t>{sb_pos0, sb_pos1}, b_pos++);
     }
-    {
-        assert(num_precinct.sum());
-        const auto& precincts_size = cmp.acs_psizes();
-        for (uint32_t i = 0; i < num_precinct.pro(); ++i) {
-            const pos2D offset(region.pos0 / precincts_size[i].pow2());
-            assert(offset.x == 0 && offset.y == 0);
-            const pos2D xy(i % num_precinct.x, i / num_precinct.y);
-            const pos2D p_pos0 = pos2D::max(region.pos0, precincts_size[i].pow2() * xy);
-            const pos2D p_pos1 = pos2D::min(region.pos1, precincts_size[i].pow2() * (xy + 1));
-            precincts.emplace_back(cmp, j2k_region<uint32_t>{p_pos0, p_pos1}, i, num_subband);
-        }
+
+    assert(num_precinct.sum());
+    // construct_precincts();
+}
+
+void j2k_Resolution::construct_precincts() {
+    const auto& precincts_size = cmp.acs_psizes();
+    precincts.reserve(num_precinct.pro());
+    for (uint32_t i = 0; i < num_precinct.pro(); ++i) {
+        const pos2D offset(region.pos0 / precincts_size[i].pow2());
+        assert(offset.x == 0 && offset.y == 0);
+        const pos2D xy(i % num_precinct.x, i / num_precinct.y);
+        const pos2D p_pos0 = pos2D::max(region.pos0, precincts_size[i].pow2() * xy);
+        const pos2D p_pos1 = pos2D::min(region.pos1, precincts_size[i].pow2() * (xy + 1));
+        precincts.emplace_back(cmp, j2k_region<uint32_t>{p_pos0, p_pos1}, num_subband);
     }
 }
 
@@ -120,7 +136,7 @@ j2k_Component::j2k_Component(j2k_Tile& tile, uint8_t ci)
         write_quantization_style(qcd);
     }
     for (uint8_t i = 0; i < resolutions.capacity(); ++i) {
-        resolutions.emplace_back(tile, *this, mhd.dfs[dfs_idx], i);
+        resolutions.emplace_back(tile, *this, mhd.dfs[dfs_idx - 1], i);
     }
 }
 
@@ -133,4 +149,7 @@ void j2k_Tile::init(const MainHeader& mhd, J2kBuf& buf) {
     for (size_t i = 0; i < mhd.siz->get_Csiz(); ++i) {
         tile_components.emplace_back(*this, i);
     }
+}
+
+void j2k_Tile::build_table() const {
 }

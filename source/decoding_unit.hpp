@@ -21,29 +21,53 @@ class j2k_Subband;
 class j2k_Precinct;
 class j2k_PrecinctSubband;
 class j2k_CodeBlock;
+class j2k_table;
 
-class j2k_CodeBlock {};
-class j2k_PrecinctSubband {};
-
-class j2k_Precinct {
-    fixed_capacity_vector<j2k_PrecinctSubband, 3> pband;
+class j2k_CodeBlock {
+private:
     j2k_region<uint32_t> region;
-    uint32_t index;
-
-    uint8_t num_subband;
+    uint8_t* codeblock_data;
+    uint32_t length;
+    uint8_t number_of_zbp;
+    uint8_t band_pos;
 
 public:
-    j2k_Precinct(const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint32_t idx, uint8_t ns);
+    j2k_CodeBlock() = default;
+    j2k_CodeBlock(const j2k_region<uint32_t> rgn, uint8_t spos);
+};
+
+class j2k_PrecinctSubband {
+private:
+    j2k_CodeBlock codeblock;
+
+public:
+    j2k_PrecinctSubband() = default;
+    j2k_PrecinctSubband(j2k_CodeBlock&& cb) : codeblock{cb} {}
+    auto& acs_codeblock() { return codeblock; }
+    const auto& acs_codeblock() const { return codeblock; }
+};
+
+class j2k_Precinct {
+private:
+    fixed_capacity_vector<j2k_PrecinctSubband, 3> pband;
+    j2k_region<uint32_t> region;
+    uint32_t PID;
+
+public:
+    j2k_Precinct(const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint8_t ns);
 };
 
 class j2k_Subband {
+private:
+    const j2k_Component* parent_component;
+    const j2k_Resolution* parent_resolution;
     j2k_region<uint32_t> region;
-    j2k_Component* parent_component;
-    j2k_Resolution* parent_resolution;
     uint8_t position;
 
 public:
-    j2k_Subband();
+    j2k_Subband(const j2k_Component& cmp, const j2k_Resolution& rsl, const j2k_region<uint32_t>& rgn, uint8_t pos);
+
+    uint8_t get_position() const { return position; }
 };
 
 class j2k_Resolution {
@@ -57,6 +81,7 @@ private:
 
 public:
     j2k_Resolution(j2k_Tile& tile, const j2k_Component& cmp, const DFS& dfs, uint8_t nl);
+    void construct_precincts();
     const auto& get_region() const { return region; }
     uint8_t get_resolution_level() const { return resolution_level; }
     uint8_t get_df_direction() const { return df_direction; }
@@ -80,27 +105,38 @@ public:
     auto& acs_psizes() { return precinct_sizes; }
     const auto& acs_psizes() const { return precinct_sizes; }
     const auto& get_region() const { return region; }
-    const auto& get_resolutions() const { return resolutions; }
+    const auto& acs_resolutions() const { return resolutions; }
 };
 
 class j2k_Tile {
+public:
+    using resource_t = j2k_resource<j2k_Precinct, j2k_PrecinctSubband, j2k_CodeBlock>;
+
 private:
     // static constexpr size_t MAIN_PACKET_BUFFER = 256;
     // uint8_t main_packet_data[MAIN_PACKET_BUFFER];
 
-    j2k_resource<j2k_Precinct, j2k_PrecinctSubband, j2k_CodeBlock> heap_resources;
+    resource_t heap_resources;
     const MainHeader* main_header;
     fixed_capacity_vector<j2k_Component, j2kprf::Csiz_max> tile_components;
 
     j2k_region<uint32_t> region;
 
 public:
-    void move_resource(const decltype(heap_resources)& resource) = delete;
-    void move_resource(decltype(heap_resources)&& resource) { heap_resources = std::move(resource); }
+    void move_resource(const resource_t& resource) = delete;
+    void move_resource(resource_t&& resource) { heap_resources = std::move(resource); }
     auto resource_ptr() { return &heap_resources; }
     auto& acs_main_header() { return *main_header; }
     const auto& acs_main_header() const { return *main_header; }
     const auto& get_region() const { return region; }
     void init(const MainHeader& mhd, J2kBuf& buf);
     void build_table() const;
+};
+
+class j2k_table {
+private:
+    std::pmr::vector<j2k_Precinct> precincts;
+
+public:
+    j2k_table();
 };

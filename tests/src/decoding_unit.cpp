@@ -43,7 +43,10 @@ int main(int argc, char** argv) {
     }
     RTP_file rtpf;
     tklib::interval_t<size_t> frame_range{};
-    rtpf.load(rtp_filepath, alloc_size);
+    if (!rtpf.load(rtp_filepath, alloc_size)) {
+        std::cerr << "can't load file: '" << rtp_filepath << "'" << std::endl;
+        exit(1);
+    }
     if (rtpf.num_frame() + 1 < target_frame) {
         std::cerr << "frame " << target_frame << " is out range" << std::endl;
         exit(1);
@@ -81,6 +84,8 @@ int main(int argc, char** argv) {
     rtp_recv.load_main_packet();
     J2kBuf buf(&rtp_recv);
     main_header.read(buf);
+    auto* ptr = j2k_tile.resource_ptr();
+    ptr->prev_allocate(1836, 0, 0);
     j2k_tile.init(main_header, buf);
 
     return 0;
