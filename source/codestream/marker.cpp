@@ -69,6 +69,7 @@ void SIZ::get_Siz(pos2D& in) const {
     in.x = Xsiz;
     in.y = Ysiz;
 }
+pos2D SIZ::get_Osiz() const { return {XOsiz, YOsiz}; }
 void SIZ::get_Osiz(pos2D& in) const {
     in.x = XOsiz;
     in.y = YOsiz;
@@ -78,6 +79,7 @@ void SIZ::get_Tsiz(pos2D& in) const {
     in.x = XTsiz;
     in.y = YTsiz;
 }
+pos2D SIZ::get_TOsiz() const { return {XTOsiz, YTOsiz}; }
 void SIZ::get_TOsiz(pos2D& in) const {
     in.x = XTOsiz;
     in.y = YTOsiz;

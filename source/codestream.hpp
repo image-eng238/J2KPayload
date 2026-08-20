@@ -233,9 +233,11 @@ public:
     void get_tilesize(pos2D&) const;
     pos2D get_Siz() const;
     void get_Siz(pos2D&) const;
+    pos2D get_Osiz() const;
     void get_Osiz(pos2D&) const;
     pos2D get_Tsiz() const;
     void get_Tsiz(pos2D&) const;
+    pos2D get_TOsiz() const;
     void get_TOsiz(pos2D&) const;
     uint8_t get_Ssiz(uint16_t) const;
     bool is_signed_component_sample(uint16_t) const;
