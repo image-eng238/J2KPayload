@@ -1,5 +1,7 @@
 #include "decoding_unit.hpp"
 #include "codestream.hpp"
+#include <numeric>
+#include <vector>
 
 j2k_CodeBlock::j2k_CodeBlock(const j2k_region<uint32_t> rgn, uint8_t spos)
     : region{rgn}, codeblock_data{}, length{}, number_of_zbp{}, band_pos{spos} {}
@@ -24,10 +26,9 @@ j2k_Subband::j2k_Subband(const j2k_Component& cmp, const j2k_Resolution& rsl, co
 }
 
 j2k_Resolution::j2k_Resolution(j2k_Tile& tile, const j2k_Component& cmp, const DFS& dfs, uint8_t nl)
-    : precincts{tile.resource_ptr()}, resolution_level{nl}, df_direction{dfs.get_Ddfs(nl)} {
-    uint8_t rx = resolution_level, ry = resolution_level;
-    dfs.ceil_NL(rx, ry);
-    const auto d     = pos2D{1u << j2kprf::NL - rx, 1u << j2kprf::NL - ry};
+    : precincts{tile.resource_ptr()}, resolution_level{nl}, df_direction{dfs.get_Ddfs(nl)}, resolution_xy{resolution_level} {
+    dfs.ceil_NL(resolution_xy.x, resolution_xy.y);
+    const auto d     = pos2D{1u << j2kprf::NL - resolution_xy.x, 1u << j2kprf::NL - resolution_xy.y};
     const auto ppow2 = cmp.acs_psizes()[resolution_level].pow2();
     region.pos0      = ceil_int(cmp.get_region().pos0, d);
     region.pos1      = ceil_int(cmp.get_region().pos1, d);
@@ -47,19 +48,20 @@ j2k_Resolution::j2k_Resolution(j2k_Tile& tile, const j2k_Component& cmp, const D
     }
 
     assert(num_precinct.sum());
-    // construct_precincts();
+    construct_precincts(cmp);
 }
 
-void j2k_Resolution::construct_precincts() {
+void j2k_Resolution::construct_precincts(const j2k_Component& cmp) {
     const auto& precincts_size = cmp.acs_psizes();
+    const auto& psiz           = cmp.acs_psizes()[resolution_level];
     precincts.reserve(num_precinct.pro());
     for (uint32_t i = 0; i < num_precinct.pro(); ++i) {
-        const pos2D offset(region.pos0 / precincts_size[i].pow2());
+        const pos2D offset(region.pos0 / psiz.pow2());
         assert(offset.x == 0 && offset.y == 0);
-        const pos2D xy(i % num_precinct.x, i / num_precinct.y);
-        const pos2D p_pos0 = pos2D::max(region.pos0, precincts_size[i].pow2() * xy);
-        const pos2D p_pos1 = pos2D::min(region.pos1, precincts_size[i].pow2() * (xy + 1));
-        precincts.emplace_back(cmp, j2k_region<uint32_t>{p_pos0, p_pos1}, num_subband);
+        const pos2D xy(i % num_precinct.x, i / num_precinct.x);
+        const pos2D p_pos0 = pos2D::max(region.pos0, psiz.pow2() * xy);
+        const pos2D p_pos1 = pos2D::min(region.pos1, psiz.pow2() * (xy + 1));
+        precincts.emplace_back(cmp, j2k_region<uint32_t>{p_pos0, p_pos1}, static_cast<uint8_t>(subbands.size()));
     }
 }
 
@@ -149,7 +151,87 @@ void j2k_Tile::init(const MainHeader& mhd, J2kBuf& buf) {
     for (size_t i = 0; i < mhd.siz->get_Csiz(); ++i) {
         tile_components.emplace_back(*this, i);
     }
+    build_table();
 }
 
-void j2k_Tile::build_table() const {
+void j2k_Tile::build_table() {
+    const auto progression_order = main_header->cod->get_progression_order();
+    const pos2D PPxy{
+        std::accumulate(
+            tile_components.begin(), tile_components.end(), static_cast<uint32_t>(1),
+            [](uint32_t acc, const j2k_Component& val) { return std::lcm(acc, val.get_codeblock_size().x); }
+        ),
+        std::accumulate(
+            tile_components.begin(), tile_components.end(), static_cast<uint32_t>(1),
+            [](uint32_t acc, const j2k_Component& val) { return std::lcm(acc, val.get_codeblock_size().y); }
+        )
+    };
+    const auto& siz      = main_header->siz;
+    const uint32_t XOsiz = siz->get_Osiz().x;
+    assert(XOsiz == siz->get_TOsiz().x);
+    const uint32_t YOsiz = 0;
+    assert(!siz->get_Osiz().y && !siz->get_TOsiz().y);
+    const auto num_component = siz->get_Csiz();
+
+    // fixed_capacity_vector<std::array<pos2D, j2kprf::NL + 1>, j2kprf::Csiz_max> precinct_count{num_component};
+    // fixed_capacity_vector<uint32_t, j2kprf::Csiz_max> cmp_prc_count(num_component);
+    std::vector<std ::array<pos2D, j2kprf::NL + 1>> precinct_count{num_component};
+    std::vector<uint32_t> cmp_prc_count(num_component);
+
+    switch (progression_order) {
+        case j2kmk::RPCL:
+            break;
+        case j2kmk::PCRL:
+            for (uint32_t y = 0; y < region.pos1.y; y += PPxy.y) {
+                for (uint32_t x = 0; x < region.pos1.x; x += PPxy.x) {
+                    for (auto& cmp : tile_components) {
+                        const auto c        = cmp.get_index();
+                        const auto cXYRsiz  = siz->get_Rsiz(c);
+                        const auto& cpsizes = cmp.acs_psizes();
+                        for (auto& rsl : cmp.acs_resolutions()) {
+                            // if (rsl.get_df_direction() == j2kmk::DFS_BOTH && !(y % (PPxy.y * 2))) { continue; }
+
+                            const auto r              = rsl.get_resolution_level();
+                            const auto rprecinct_size = cpsizes[r];
+                            const auto rxy            = rsl.get_resolution_xy();
+                            bool xc1, xc2, xc3, yc1, yc2, yc3;
+
+                            xc1         = x % (cXYRsiz.x * (1 << (rprecinct_size.x + j2kprf::NL - rxy.x))) == 0;
+                            xc2         = x == XOsiz;
+                            xc3         = !XOsiz * (1 << (j2kprf::NL - rxy.x) % (1 << (rprecinct_size.x + j2kprf::NL - rxy.x)));
+                            // if (!(xc1 || xc2 && xc3)) { continue; }
+                            yc1         = y % (cXYRsiz.y * (1 << (rprecinct_size.y + j2kprf::NL - rxy.y))) == 0;
+                            yc2         = y == YOsiz;
+                            yc3         = !YOsiz * (1 << (j2kprf::NL - rxy.y) % (1 << (rprecinct_size.y + j2kprf::NL - rxy.y)));
+                            // if (!(yc1 || yc2 && yc3)) { continue; }
+                            bool xcheck = xc1 || xc2 && xc3;
+                            bool ycheck = yc1 || yc2 && yc3;
+                            if (!(xcheck && ycheck)) { continue; }
+
+                            auto& current_pcount = precinct_count[c][r];
+
+                            const auto PID = c + (cmp_prc_count[c]++) * num_component;
+                            std::cout << PID << std::endl;
+                            // const auto p   = current_pcount.x + current_pcount.y * rsl.get_num_precinct().x;
+                            // const auto prc = rsl.acs_precincts()[p];
+
+                            current_pcount.x += 1;
+                            if (current_pcount.x == rsl.get_num_precinct().x) {
+                                current_pcount.x = 0;
+                                current_pcount.y += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            break;
+        case j2kmk::LRCP:
+            [[fallthrough]];
+        case j2kmk::RLCP:
+            [[fallthrough]];
+        case j2kmk::CPRL:
+            [[fallthrough]];
+        default:
+            fprintf(stderr, "progression order %d is unsupported value\n", static_cast<int>(progression_order));
+    }
 }

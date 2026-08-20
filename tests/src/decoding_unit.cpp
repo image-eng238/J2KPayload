@@ -29,6 +29,7 @@ int main(int argc, char** argv) {
                     break;
                 case opts('h'):
                     printf("Options: \n%s\n", TKLIB_ARG_DESCRIPTION(opts, dft_style_fmt));
+                    exit(0);
                 case opts(opt_err::ambiguous):
                     std::cerr << "'--" << args.get_last_parse() << "' is ambiguous" << std::endl;
                     exit(1);

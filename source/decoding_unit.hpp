@@ -23,6 +23,14 @@ class j2k_PrecinctSubband;
 class j2k_CodeBlock;
 class j2k_table;
 
+class j2k_table {
+private:
+    std::pmr::vector<j2k_Precinct> precincts;
+
+public:
+    j2k_table(std::pmr::memory_resource* r) : precincts{r} {}
+};
+
 class j2k_CodeBlock {
 private:
     j2k_region<uint32_t> region;
@@ -55,6 +63,9 @@ private:
 
 public:
     j2k_Precinct(const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint8_t ns);
+    const auto& acs_pband() const { return pband; }
+    const auto& get_region() const { return region; }
+    auto get_PID() const { return PID; }
 };
 
 class j2k_Subband {
@@ -78,13 +89,17 @@ private:
     j2k_region<uint32_t> region;
     uint8_t resolution_level;
     uint8_t df_direction;
+    Postion2D<uint8_t> resolution_xy;
 
 public:
     j2k_Resolution(j2k_Tile& tile, const j2k_Component& cmp, const DFS& dfs, uint8_t nl);
-    void construct_precincts();
+    void construct_precincts(const j2k_Component& cmp);
+    const auto& acs_precincts() const { return precincts; }
     const auto& get_region() const { return region; }
+    const auto& get_num_precinct() const { return num_precinct; }
     uint8_t get_resolution_level() const { return resolution_level; }
     uint8_t get_df_direction() const { return df_direction; }
+    const auto& get_resolution_xy() const { return resolution_xy; }
 };
 
 class j2k_Component {
@@ -105,7 +120,10 @@ public:
     auto& acs_psizes() { return precinct_sizes; }
     const auto& acs_psizes() const { return precinct_sizes; }
     const auto& get_region() const { return region; }
+    auto& acs_resolutions() { return resolutions; }
     const auto& acs_resolutions() const { return resolutions; }
+    const auto& get_codeblock_size() const { return codeblock_size; }
+    uint8_t get_index() const { return component_index; }
 };
 
 class j2k_Tile {
@@ -121,8 +139,10 @@ private:
     fixed_capacity_vector<j2k_Component, j2kprf::Csiz_max> tile_components;
 
     j2k_region<uint32_t> region;
+    j2k_table table;
 
 public:
+    j2k_Tile() : heap_resources{}, main_header{}, tile_components{}, region{}, table{&heap_resources} {}
     void move_resource(const resource_t& resource) = delete;
     void move_resource(resource_t&& resource) { heap_resources = std::move(resource); }
     auto resource_ptr() { return &heap_resources; }
@@ -130,13 +150,5 @@ public:
     const auto& acs_main_header() const { return *main_header; }
     const auto& get_region() const { return region; }
     void init(const MainHeader& mhd, J2kBuf& buf);
-    void build_table() const;
-};
-
-class j2k_table {
-private:
-    std::pmr::vector<j2k_Precinct> precincts;
-
-public:
-    j2k_table();
+    void build_table();
 };
