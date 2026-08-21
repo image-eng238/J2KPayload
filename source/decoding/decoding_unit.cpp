@@ -52,8 +52,7 @@ j2k_Resolution::j2k_Resolution(j2k_Tile& tile, const j2k_Component& cmp, const D
 }
 
 void j2k_Resolution::construct_precincts(const j2k_Component& cmp) {
-    const auto& precincts_size = cmp.acs_psizes();
-    const auto& psiz           = cmp.acs_psizes()[resolution_level];
+    const auto& psiz = cmp.acs_psizes()[resolution_level];
     precincts.reserve(num_precinct.pro());
     for (uint32_t i = 0; i < num_precinct.pro(); ++i) {
         const pos2D offset(region.pos0 / psiz.pow2());
@@ -175,7 +174,7 @@ void j2k_Tile::build_table() {
 
     // fixed_capacity_vector<std::array<pos2D, j2kprf::NL + 1>, j2kprf::Csiz_max> precinct_count{num_component};
     // fixed_capacity_vector<uint32_t, j2kprf::Csiz_max> cmp_prc_count(num_component);
-    std::vector<std ::array<pos2D, j2kprf::NL + 1>> precinct_count{num_component};
+    std::vector<std::array<pos2D, j2kprf::NL + 1>> precinct_count{num_component};
     std::vector<uint32_t> cmp_prc_count(num_component);
 
     switch (progression_order) {
@@ -212,8 +211,13 @@ void j2k_Tile::build_table() {
 
                             const auto PID = c + (cmp_prc_count[c]++) * num_component;
                             std::cout << PID << std::endl;
-                            // const auto p   = current_pcount.x + current_pcount.y * rsl.get_num_precinct().x;
-                            // const auto prc = rsl.acs_precincts()[p];
+
+                            const auto p   = current_pcount.x + current_pcount.y * rsl.get_num_precinct().x;
+                            const auto prc = rsl.acs_precincts()[p];
+
+                            const auto p_pos0 = prc.get_region().pos0,
+                                       p_pos1 = prc.get_region().pos1;
+                            // assert(p_pos0.x == x && p_pos0.y == y);
 
                             current_pcount.x += 1;
                             if (current_pcount.x == rsl.get_num_precinct().x) {
@@ -233,5 +237,6 @@ void j2k_Tile::build_table() {
             [[fallthrough]];
         default:
             fprintf(stderr, "progression order %d is unsupported value\n", static_cast<int>(progression_order));
+            exit(1);
     }
 }
