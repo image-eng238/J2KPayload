@@ -183,3 +183,123 @@ public:
 
 template <>
 class j2k_resource<> : public std::pmr::memory_resource {};
+
+template <typename... Ts>
+class j2k_parent_resource;
+
+class j2k_child_resource : public std::pmr::memory_resource {
+    template <typename... Ts>
+    friend class j2k_parent_resource;
+
+private:
+    std::byte* pointer;
+    size_t length;
+
+public:
+    void* do_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) override {
+        if (bytes > length || reinterpret_cast<uintptr_t>(pointer) % alignment) {
+            throw std::bad_alloc{};
+        }
+        length -= bytes;
+        return std::exchange(pointer, pointer + bytes);
+    }
+    void do_deallocate(void* p, std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) override {
+        if (p == pointer - bytes) {
+            pointer -= bytes;
+            length += bytes;
+        }
+    }
+    bool do_is_equal(const memory_resource& other) const noexcept override { return this == &other; }
+
+    j2k_child_resource() = default;
+};
+
+template <size_t Size, size_t Align>
+struct virtual_type_t {};
+
+template <typename... Ts>
+class j2k_parent_resource {
+private:
+    static constexpr size_t NUM_TYPES = sizeof...(Ts);
+    std::array<j2k_child_resource, NUM_TYPES> pmr_resources;
+    std::byte* memory_pointer;
+
+    template <typename T>
+    struct size_expansion {
+        static constexpr size_t value = sizeof(T);
+    };
+    template <size_t Size, size_t Align>
+    struct size_expansion<virtual_type_t<Size, Align>> {
+        static constexpr size_t value = Size;
+    };
+    template <typename T>
+    struct align_expansion {
+        static constexpr size_t value = alignof(T);
+    };
+    template <size_t Size, size_t Align>
+    struct align_expansion<virtual_type_t<Size, Align>> {
+        static constexpr size_t value = Align;
+    };
+
+public:
+    j2k_parent_resource()                                 = default;
+    j2k_parent_resource(const j2k_parent_resource& other) = delete;
+    j2k_parent_resource(j2k_parent_resource&& other) : j2k_parent_resource{} {
+        *this = std::move(other);
+    }
+    template <typename... Args>
+    j2k_parent_resource(Args... args) : j2k_parent_resource{} { prev_allocate(args...); }
+
+    ~j2k_parent_resource() { post_deallocate(); }
+
+    j2k_parent_resource& operator=(const j2k_parent_resource& other) = delete;
+    j2k_parent_resource& operator=(j2k_parent_resource&& other) {
+        this->pmr_resources  = std::exchange(other.pmr_resources, {});
+        this->memory_pointer = std::exchange(other.memory_pointer, nullptr);
+    }
+
+    bool is_allocated() const { return memory_pointer != nullptr; }
+
+    template <typename... Args>
+    bool prev_allocate(std::nothrow_t, Args... args) noexcept {
+        constexpr size_t sizes[NUM_TYPES]  = {size_expansion<Ts>::value...};
+        constexpr size_t aligns[NUM_TYPES] = {align_expansion<Ts>::value...};
+
+        const size_t alloc_sizes[NUM_TYPES] = {static_cast<size_t>(args)...};
+        size_t total_alloc_size             = 0;
+
+        for (size_t i = 0; i < NUM_TYPES; ++i) {
+            if (const auto mod = total_alloc_size % aligns[i]; mod != 0) {
+                total_alloc_size += aligns[i] - mod;
+            }
+            total_alloc_size += alloc_sizes[i] * sizes[i];
+            pmr_resources[i].length = alloc_sizes[i] * sizes[i];
+        }
+
+        memory_pointer = static_cast<std::byte*>(malloc(total_alloc_size));
+        if (memory_pointer == nullptr) {
+            return false;
+        }
+
+        pmr_resources.front().pointer = memory_pointer;
+        for (size_t i = 1; i < NUM_TYPES; ++i) {
+            pmr_resources[i].pointer = memory_pointer + alloc_sizes[i - 1] * sizes[i - 1];
+        }
+        return true;
+    }
+    template <typename... Args>
+    bool prev_allocate(Args... args) {
+        if (!prev_allocate(std::nothrow, args...)) { throw std::bad_alloc{}; }
+        return true;
+    }
+
+    void post_deallocate() {
+        if (is_allocated()) {
+            free(std::exchange(memory_pointer, nullptr));
+            pmr_resources = {};
+        }
+    }
+
+    template <size_t Index>
+    j2k_child_resource* get_resource() { return &pmr_resources.at(Index); }
+};
