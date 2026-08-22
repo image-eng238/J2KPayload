@@ -256,6 +256,7 @@ public:
     j2k_parent_resource& operator=(j2k_parent_resource&& other) {
         this->pmr_resources  = std::exchange(other.pmr_resources, {});
         this->memory_pointer = std::exchange(other.memory_pointer, nullptr);
+        return *this;
     }
 
     bool is_allocated() const { return memory_pointer != nullptr; }
