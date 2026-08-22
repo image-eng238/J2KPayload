@@ -61,6 +61,10 @@ template <typename T>
 constexpr Postion2D<T> operator/(const typename Postion2D<T>::type& left, const Postion2D<T>& right) noexcept { return {left / right.x, left / right.y}; }
 template <typename T>
 constexpr Postion2D<T> operator%(const typename Postion2D<T>::type& left, const Postion2D<T>& right) noexcept { return {left % right.x, left % right.y}; }
+template <typename T>
+constexpr bool operator==(const Postion2D<T>& left, const Postion2D<T>& right) noexcept { return left.x == right.x && left.y == right.y; }
+template <typename T>
+constexpr bool operator!=(const Postion2D<T>& left, const Postion2D<T>& right) noexcept { return !(left == right); }
 using pos2D = Postion2D<>;
 
 class J2kBuf {
