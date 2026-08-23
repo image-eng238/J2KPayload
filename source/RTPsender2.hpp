@@ -38,7 +38,7 @@ public:
                 return false;
             }
             const size_t pktsiz = (pktdata[2] << 8) | pktdata[3];
-            if (i += pktsiz + hd; i < siz) {
+            if (i += pktsiz + hd; i <= siz) {
                 packets.push_back(packet_t{pktdata + hd, pktsiz});
                 if (RTPHeader_trait::get_M(packets.back().data())) ++frames;
             } else {
