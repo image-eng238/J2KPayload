@@ -262,7 +262,7 @@ public:
     bool is_allocated() const { return memory_pointer != nullptr; }
 
     template <typename... Args>
-    bool prev_allocate(std::nothrow_t, Args... args) noexcept {
+    size_t prev_allocate(std::nothrow_t, Args... args) noexcept {
         constexpr size_t sizes[NUM_TYPES]  = {size_expansion<Ts>::value...};
         constexpr size_t aligns[NUM_TYPES] = {align_expansion<Ts>::value...};
 
@@ -279,19 +279,20 @@ public:
 
         memory_pointer = static_cast<std::byte*>(malloc(total_alloc_size));
         if (memory_pointer == nullptr) {
-            return false;
+            return 0;
         }
 
         pmr_resources.front().pointer = memory_pointer;
         for (size_t i = 1; i < NUM_TYPES; ++i) {
             pmr_resources[i].pointer = memory_pointer + alloc_sizes[i - 1] * sizes[i - 1];
         }
-        return true;
+        return total_alloc_size;
     }
     template <typename... Args>
-    bool prev_allocate(Args... args) {
-        if (!prev_allocate(std::nothrow, args...)) { throw std::bad_alloc{}; }
-        return true;
+    size_t prev_allocate(Args... args) {
+        auto alloc_size = prev_allocate(std::nothrow, args...);
+        if (!alloc_size) { throw std::bad_alloc{}; }
+        return alloc_size;
     }
 
     void post_deallocate() {
