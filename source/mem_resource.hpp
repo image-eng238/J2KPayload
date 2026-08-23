@@ -263,6 +263,7 @@ public:
 
     template <typename... Args>
     size_t prev_allocate(std::nothrow_t, Args... args) noexcept {
+        post_deallocate();
         constexpr size_t sizes[NUM_TYPES]  = {size_expansion<Ts>::value...};
         constexpr size_t aligns[NUM_TYPES] = {align_expansion<Ts>::value...};
 
