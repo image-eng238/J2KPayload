@@ -62,8 +62,9 @@ int main(int argc, char** argv) {
         FPS,
         MS
     };
-    OutF output_format = OutF::FPS;
-    using clock_t      = std::chrono::high_resolution_clock;
+    OutF output_format       = OutF::FPS;
+    using clock_t            = std::chrono::high_resolution_clock;
+    size_t prealloc_precinct = 0;
 
 #ifdef RTP_CLOCK_CHECK
     size_t clock_check_size = 120;
@@ -78,6 +79,7 @@ int main(int argc, char** argv) {
             optspec_t{'c', "receive_affinity", true, "CPU affinity of the receive thread"},
             optspec_t{'C', "analysis_affinity", true, "CPU affinity of the analysis thread"},
             optspec_t{'b', "BufferLength", true, "Receive buffer length, default: 13600, max: 13600"},
+            optspec_t{0, "Precinct", true, "Number of precinct's to be allocated in advance"},
             optspec_t{0, "ReceiveFrequency", true, "The multiplier for the receiving thread frequency (90kHz). Fromat: \"receive:again\",default: 0.5:0.25"},
             optspec_t{0, "Enter", false, "analysis thread continue at enter"},
             optspec_t{0, "OutputFormat", true, "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
@@ -133,6 +135,9 @@ int main(int argc, char** argv) {
                         }
                     }
                 } break;
+                case opts("Precinct"):
+                    prealloc_precinct = args.get_value<size_t>().value_or(0);
+                    break;
                 case opts("ReceiveFrequency"):
                     if (auto tmp = args.get_interval<double>(':'); tmp) {
                         rf_r = tmp->first;
@@ -277,6 +282,11 @@ int main(int argc, char** argv) {
                 avg_frame = now;
             }
         };
+
+        j2k_Tile::resource_t prealloc;
+        if (prealloc_precinct != 0) {
+            prealloc.prev_allocate(prealloc_precinct, prealloc_precinct * 3);
+        }
         if (unlikely(is_enter)) {
             while (!analysis_stoper);
         }
@@ -286,6 +296,7 @@ int main(int argc, char** argv) {
 #ifndef DISABLE_TABLE
         MainHeader main_header;
         j2k_Tile j2k_tile;
+        j2k_tile.move_resource(std::move(prealloc));
         auto& j2k_packet_table = j2k_tile.acs_table();
         {
             int32_t result = 0;
