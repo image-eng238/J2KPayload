@@ -103,5 +103,23 @@ int main(int argc, char** argv) {
     }
     j2k_tile.init(main_header, buf);
 
+    uint32_t PID       = 0;
+    size_t table_index = 0;
+    auto& table        = j2k_tile.acs_table();
+    while (true) {
+        rtp_recv.load_body_packet();
+        PID = rtp_recv.get_PID();
+        while (table_index < table.size() && table[table_index].get_PID() != PID) {
+            table[table_index].read_packet(buf);
+            ++table_index;
+        }
+        if (table_index == table.size()) {
+            auto m = buf.get_byte(2);
+            assert(m == j2kmk::EOC);
+            rtp_recv.terminate();
+            break;
+        }
+    }
+
     return 0;
 }
