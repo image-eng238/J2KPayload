@@ -6,8 +6,8 @@
 j2k_CodeBlock::j2k_CodeBlock(const j2k_region<uint32_t> rgn, uint8_t spos)
     : region{rgn}, codeblock_data{}, length{}, number_of_zbp{}, band_pos{spos} {}
 
-j2k_Precinct::j2k_Precinct(const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint8_t ns)
-    : region{rgn}, PID{} {
+j2k_Precinct::j2k_Precinct(j2k_Tile& tile, const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint8_t ns, uint32_t PID)
+    : pband{tile.resource_ptr<1>()}, region{rgn}, PID{PID} {
 
     const pos2D ob[4] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
     pband.reserve(ns);
@@ -26,13 +26,14 @@ j2k_Subband::j2k_Subband(const j2k_Component& cmp, const j2k_Resolution& rsl, co
 }
 
 j2k_Resolution::j2k_Resolution(j2k_Tile& tile, const j2k_Component& cmp, const DFS& dfs, uint8_t nl)
-    : precincts{tile.resource_ptr()}, resolution_level{nl}, df_direction{dfs.get_Ddfs(nl)}, resolution_xy{resolution_level} {
+    : precincts{tile.resource_ptr<0>()}, resolution_level{nl}, df_direction{dfs.get_Ddfs(nl)}, resolution_xy{resolution_level} {
     dfs.ceil_NL(resolution_xy.x, resolution_xy.y);
     const auto d     = pos2D{1u << j2kprf::NL - resolution_xy.x, 1u << j2kprf::NL - resolution_xy.y};
     const auto ppow2 = cmp.acs_psizes()[resolution_level].pow2();
     region.pos0      = ceil_int(cmp.get_region().pos0, d);
     region.pos1      = ceil_int(cmp.get_region().pos1, d);
     num_precinct     = ceil_int(region.pos1, ppow2) - region.pos0 / ppow2;
+    tile.add_total_precinct(num_precinct.pro());
 
     uint8_t num_subband = (resolution_level != 0) ? 3 : 1;
     if (df_direction != 0 && df_direction & 0b10) num_subband = 1;
@@ -46,12 +47,13 @@ j2k_Resolution::j2k_Resolution(j2k_Tile& tile, const j2k_Component& cmp, const D
         const pos2D sb_pos1 = ceil_int(cmp.get_region().pos1 - (ob[b_pos] * (1 << (nb - 1))), 1 << nb);
         subbands.emplace_back(cmp, *this, j2k_region<uint32_t>{sb_pos0, sb_pos1}, b_pos++);
     }
+    tile.add_total_pband(num_subband * num_precinct.pro());
 
     assert(num_precinct.sum());
-    construct_precincts(cmp);
+    // construct_precincts(tile, cmp);
 }
 
-void j2k_Resolution::construct_precincts(const j2k_Component& cmp) {
+void j2k_Resolution::construct_precincts(j2k_Tile& tile, const j2k_Component& cmp) {
     const auto& psiz = cmp.acs_psizes()[resolution_level];
     precincts.reserve(num_precinct.pro());
     for (uint32_t i = 0; i < num_precinct.pro(); ++i) {
@@ -60,7 +62,7 @@ void j2k_Resolution::construct_precincts(const j2k_Component& cmp) {
         const pos2D xy(i % num_precinct.x, i / num_precinct.x);
         const pos2D p_pos0 = pos2D::max(region.pos0, psiz.pow2() * xy);
         const pos2D p_pos1 = pos2D::min(region.pos1, psiz.pow2() * (xy + 1));
-        precincts.emplace_back(cmp, j2k_region<uint32_t>{p_pos0, p_pos1}, static_cast<uint8_t>(subbands.size()));
+        precincts.emplace_back(tile, cmp, j2k_region<uint32_t>{p_pos0, p_pos1}, static_cast<uint8_t>(subbands.size()));
     }
 }
 
@@ -154,6 +156,15 @@ void j2k_Tile::init(const MainHeader& mhd, J2kBuf& buf) {
 }
 
 void j2k_Tile::build_table() {
+    if (!heap_resources.is_allocated()) {
+        auto t    = std::chrono::high_resolution_clock::now();
+        auto size = heap_resources.prev_allocate(total_precinct, total_pband);
+        auto r    = std::chrono::high_resolution_clock::now() - t;
+        std::cout << "alloc time(ns) = " << std::chrono::duration_cast<std::chrono::nanoseconds>(r).count()
+                  << ", size(byte) = " << size << std::endl;
+    }
+    table.reserve(total_precinct);
+
     const auto progression_order = main_header->cod->get_progression_order();
     const pos2D PPxy{
         std::accumulate(
@@ -172,10 +183,8 @@ void j2k_Tile::build_table() {
     assert(!siz->get_Osiz().y && !siz->get_TOsiz().y);
     const auto num_component = siz->get_Csiz();
 
-    // fixed_capacity_vector<std::array<pos2D, j2kprf::NL + 1>, j2kprf::Csiz_max> precinct_count{num_component};
-    // fixed_capacity_vector<uint32_t, j2kprf::Csiz_max> cmp_prc_count(num_component);
-    std::vector<std::array<pos2D, j2kprf::NL + 1>> precinct_count{num_component};
-    std::vector<uint32_t> cmp_prc_count(num_component);
+    fixed_capacity_vector<std::array<pos2D, j2kprf::NL + 1>, j2kprf::Csiz_max> precinct_count{num_component};
+    fixed_capacity_vector<uint32_t, j2kprf::Csiz_max> cmp_prc_count(num_component);
 
     switch (progression_order) {
         case j2kmk::RPCL:
@@ -183,44 +192,46 @@ void j2k_Tile::build_table() {
         case j2kmk::PCRL:
             for (uint32_t y = 0; y < region.pos1.y; y += PPxy.y) {
                 for (uint32_t x = 0; x < region.pos1.x; x += PPxy.x) {
-                    for (auto& cmp : tile_components) {
+                    for (const auto& cmp : tile_components) {
                         const auto c        = cmp.get_index();
                         const auto cXYRsiz  = siz->get_Rsiz(c);
                         const auto& cpsizes = cmp.acs_psizes();
-                        for (auto& rsl : cmp.acs_resolutions()) {
-                            // if (rsl.get_df_direction() == j2kmk::DFS_BOTH && !(y % (PPxy.y * 2))) { continue; }
+                        for (const auto& rsl : cmp.acs_resolutions()) {
+                            if (rsl.get_df_direction() == j2kmk::DFS_BOTH && (y % (PPxy.y * 2))) { continue; }
 
                             const auto r              = rsl.get_resolution_level();
                             const auto rprecinct_size = cpsizes[r];
                             const auto rxy            = rsl.get_resolution_xy();
+                            const auto rnum_prc       = rsl.get_num_precinct();
                             bool xc1, xc2, xc3, yc1, yc2, yc3;
 
-                            xc1         = x % (cXYRsiz.x * (1 << (rprecinct_size.x + j2kprf::NL - rxy.x))) == 0;
-                            xc2         = x == XOsiz;
-                            xc3         = !XOsiz * (1 << (j2kprf::NL - rxy.x) % (1 << (rprecinct_size.x + j2kprf::NL - rxy.x)));
-                            // if (!(xc1 || xc2 && xc3)) { continue; }
-                            yc1         = y % (cXYRsiz.y * (1 << (rprecinct_size.y + j2kprf::NL - rxy.y))) == 0;
-                            yc2         = y == YOsiz;
-                            yc3         = !YOsiz * (1 << (j2kprf::NL - rxy.y) % (1 << (rprecinct_size.y + j2kprf::NL - rxy.y)));
-                            // if (!(yc1 || yc2 && yc3)) { continue; }
-                            bool xcheck = xc1 || xc2 && xc3;
-                            bool ycheck = yc1 || yc2 && yc3;
-                            if (!(xcheck && ycheck)) { continue; }
+                            xc1 = x % (cXYRsiz.x * (1 << (rprecinct_size.x + j2kprf::NL - rxy.x))) == 0;
+                            xc2 = x == XOsiz;
+                            xc3 = !XOsiz * (1 << (j2kprf::NL - rxy.x) % (1 << (rprecinct_size.x + j2kprf::NL - rxy.x)));
+                            if (!(xc1 || xc2 && xc3)) { continue; }
+                            yc1 = y % (cXYRsiz.y * (1 << (rprecinct_size.y + j2kprf::NL - rxy.y))) == 0;
+                            yc2 = y == YOsiz;
+                            yc3 = !YOsiz * (1 << (j2kprf::NL - rxy.y) % (1 << (rprecinct_size.y + j2kprf::NL - rxy.y)));
+                            if (!(yc1 || yc2 && yc3)) { continue; }
 
                             auto& current_pcount = precinct_count[c][r];
 
                             const auto PID = c + (cmp_prc_count[c]++) * num_component;
-                            std::cout << PID << std::endl;
+                            // std::cout << PID << std::endl;
 
-                            const auto p   = current_pcount.x + current_pcount.y * rsl.get_num_precinct().x;
-                            const auto prc = rsl.acs_precincts()[p];
+                            const auto p = current_pcount.x + current_pcount.y * rnum_prc.x;
 
-                            const auto p_pos0 = prc.get_region().pos0,
-                                       p_pos1 = prc.get_region().pos1;
-                            // assert(p_pos0.x == x && p_pos0.y == y);
+                            const auto xy     = pos2D{p % rnum_prc.x, p / rnum_prc.x};
+                            const auto p_pos0 = pos2D::max(rsl.get_region().pos0, rprecinct_size.pow2() * xy);
+                            const auto p_pos1 = pos2D::min(rsl.get_region().pos1, rprecinct_size.pow2() * (xy + 1));
+                            table.emplace_back(
+                                *this,
+                                cmp, j2k_region<uint32_t>{p_pos0, p_pos1},
+                                static_cast<uint8_t>(rsl.acs_subbands().size()), PID
+                            );
 
                             current_pcount.x += 1;
-                            if (current_pcount.x == rsl.get_num_precinct().x) {
+                            if (current_pcount.x == rnum_prc.x) {
                                 current_pcount.x = 0;
                                 current_pcount.y += 1;
                             }

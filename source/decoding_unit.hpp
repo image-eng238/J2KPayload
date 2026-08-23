@@ -21,15 +21,6 @@ class j2k_Subband;
 class j2k_Precinct;
 class j2k_PrecinctSubband;
 class j2k_CodeBlock;
-class j2k_table;
-
-class j2k_table {
-private:
-    std::pmr::vector<j2k_Precinct> precincts;
-
-public:
-    j2k_table(std::pmr::memory_resource* r) : precincts{r} {}
-};
 
 class j2k_CodeBlock {
 private:
@@ -57,12 +48,13 @@ public:
 
 class j2k_Precinct {
 private:
-    fixed_capacity_vector<j2k_PrecinctSubband, 3> pband;
+    // fixed_capacity_vector<j2k_PrecinctSubband, 3> pband;
+    std::pmr::vector<j2k_PrecinctSubband> pband;
     j2k_region<uint32_t> region;
     uint32_t PID;
 
 public:
-    j2k_Precinct(const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint8_t ns);
+    j2k_Precinct(j2k_Tile& tile, const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint8_t ns, uint32_t PID = 0);
     const auto& acs_pband() const { return pband; }
     const auto& get_region() const { return region; }
     auto get_PID() const { return PID; }
@@ -93,8 +85,9 @@ private:
 
 public:
     j2k_Resolution(j2k_Tile& tile, const j2k_Component& cmp, const DFS& dfs, uint8_t nl);
-    void construct_precincts(const j2k_Component& cmp);
+    void construct_precincts(j2k_Tile& tile, const j2k_Component& cmp);
     const auto& acs_precincts() const { return precincts; }
+    const auto& acs_subbands() const { return subbands; }
     const auto& get_region() const { return region; }
     const auto& get_num_precinct() const { return num_precinct; }
     uint8_t get_resolution_level() const { return resolution_level; }
@@ -116,7 +109,7 @@ private:
     uint8_t num_guardbit;
 
 public:
-    j2k_Component(j2k_Tile& mhd, uint8_t ci);
+    j2k_Component(j2k_Tile& tile, uint8_t ci);
     auto& acs_psizes() { return precinct_sizes; }
     const auto& acs_psizes() const { return precinct_sizes; }
     const auto& get_region() const { return region; }
@@ -128,27 +121,29 @@ public:
 
 class j2k_Tile {
 public:
-    using resource_t = j2k_resource<j2k_Precinct, j2k_PrecinctSubband, j2k_CodeBlock>;
+    using resource_t = j2k_parent_resource<j2k_Precinct, j2k_PrecinctSubband>;
 
 private:
-    // static constexpr size_t MAIN_PACKET_BUFFER = 256;
-    // uint8_t main_packet_data[MAIN_PACKET_BUFFER];
-
     resource_t heap_resources;
     const MainHeader* main_header;
     fixed_capacity_vector<j2k_Component, j2kprf::Csiz_max> tile_components;
 
     j2k_region<uint32_t> region;
-    j2k_table table;
+    std::pmr::vector<j2k_Precinct> table;
+    size_t total_precinct;
+    size_t total_pband;
 
 public:
-    j2k_Tile() : heap_resources{}, main_header{}, tile_components{}, region{}, table{&heap_resources} {}
+    j2k_Tile() : heap_resources{}, main_header{}, tile_components{}, region{}, table{resource_ptr<0>()}, total_precinct{}, total_pband{} {}
     void move_resource(const resource_t& resource) = delete;
     void move_resource(resource_t&& resource) { heap_resources = std::move(resource); }
-    auto resource_ptr() { return &heap_resources; }
+    template <size_t Index>
+    j2k_child_resource* resource_ptr() { return heap_resources.get_resource<Index>(); }
     auto& acs_main_header() { return *main_header; }
     const auto& acs_main_header() const { return *main_header; }
     const auto& get_region() const { return region; }
     void init(const MainHeader& mhd, J2kBuf& buf);
+    void add_total_precinct(uint32_t n) { total_precinct += n; }
+    void add_total_pband(uint32_t n) { total_pband += n; }
     void build_table();
 };

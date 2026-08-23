@@ -6,11 +6,13 @@
 int main(int argc, char** argv) {
     std::string_view rtp_filepath;
     size_t target_frame  = 1;
+    size_t prev_prc      = 0;
     uintmax_t alloc_size = UINTMAX_MAX;
     {
         using namespace tklib;
         static constexpr argument_list opts(
             optspec_t('s', "allocate_size", true, "allocate size for .rtp file"),
+            optspec_t('p', "num_precinct", true, "number of precinct to allocate"),
             optspec_t{'r', "rtp_file", true, "The .rtp file source of packet to parse"},
             optspec_t{'f', "frame", true, "Specify frames to process"},
             optspec_t{'h', "help", false, "Show this"}
@@ -20,6 +22,9 @@ int main(int argc, char** argv) {
             switch (args.getopt()) {
                 case opts('s'):
                     alloc_size = args.get_value<uintmax_t>().value_or(UINTMAX_MAX);
+                    break;
+                case opts('p'):
+                    prev_prc = args.get_value<size_t>().value_or(0);
                     break;
                 case opts('r'):
                     rtp_filepath = args.get_str();
@@ -79,14 +84,23 @@ int main(int argc, char** argv) {
             buffer.push(pkt.data(), pkt.size());
         } while (i <= frame_range.last);
     }
+    j2k_Tile::resource_t p_psc;
+    if (prev_prc) {
+        auto t    = std::chrono::high_resolution_clock::now();
+        auto size = p_psc.prev_allocate(prev_prc, prev_prc * 3);
+        auto r    = std::chrono::high_resolution_clock::now() - t;
+        std::cout << "allocate time(ns) = " << std::chrono::duration_cast<std::chrono::nanoseconds>(r).count()
+                  << ", size(byte) = " << size << std::endl;
+    }
 
     MainHeader main_header;
     j2k_Tile j2k_tile;
     rtp_recv.load_main_packet();
     J2kBuf buf(&rtp_recv);
     main_header.read(buf);
-    auto* ptr = j2k_tile.resource_ptr();
-    ptr->prev_allocate(1836, 0, 0);
+    if (prev_prc) {
+        j2k_tile.move_resource(std::move(p_psc));
+    }
     j2k_tile.init(main_header, buf);
 
     return 0;
