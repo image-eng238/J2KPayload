@@ -1,5 +1,5 @@
 #include "argument.hpp"
-#include "fast_table.hpp"
+#include "decoding_unit.hpp"
 #include "RTPsender2.hpp"
 
 #include <array>
@@ -91,7 +91,6 @@ int main(int argc, char** argv) {
         static leaky_bucket_buf::link_list packet_buffer[PACKET_BUFFER_LENGTH];
         leaky_bucket_buf buffer(nullptr, packet_buffer, PACKET_BUFFER_LENGTH);
         RTPReceiver rtp_recv(&buffer);
-        std::array<fast_table, ConstValue::all_precinct> j2k_packet_table{}; // 1836
 
         for (size_t i = 0, j = frame_range.first; i < frame_max; ++i) {
             // load 1 frame
@@ -101,19 +100,19 @@ int main(int argc, char** argv) {
             } while (!RTPHeader_trait::get_M(pkt.data()));
 
             MainHeader main_header;
-            Tile j2k_tile;
+            j2k_Tile j2k_tile;
             rtp_recv.load_main_packet();
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
-            j2k_tile.read(main_header, j2k_packet_table);
 
-            uint32_t PID       = 0;
-            size_t table_index = 0;
+            auto& j2k_packet_table = j2k_tile.acs_table();
+            uint32_t PID           = 0;
+            size_t table_index     = 0;
             while (true) {
                 rtp_recv.load_body_packet();
                 PID = rtp_recv.get_PID();
-                while (table_index < j2k_packet_table.size() && j2k_packet_table[table_index].PID != PID) {
+                while (table_index < j2k_packet_table.size() && j2k_packet_table[table_index].get_PID() != PID) {
                     j2k_packet_table[table_index].read_packet(buf);
                     ++table_index;
                 }

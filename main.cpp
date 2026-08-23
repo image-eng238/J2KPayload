@@ -22,10 +22,7 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 #include "leaky_bucket_buf.hpp"
 
 #include "codestream.hpp"
-#include "decoding.hpp"
-#include "const_value.hpp"
-
-#include "fast_table.hpp"
+#include "decoding_unit.hpp"
 
 #include "opt_macro.hpp"
 
@@ -288,8 +285,8 @@ int main(int argc, char** argv) {
 
 #ifndef DISABLE_TABLE
         MainHeader main_header;
-        Tile j2k_tile;
-        std::array<fast_table, ConstValue::all_precinct> j2k_packet_table{};
+        j2k_Tile j2k_tile;
+        auto& j2k_packet_table = j2k_tile.acs_table();
         {
             int32_t result = 0;
             while (true) {
@@ -303,7 +300,6 @@ int main(int argc, char** argv) {
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
-            j2k_tile.read(main_header, j2k_packet_table);
             printf("main header read, seq: %d\n", rtp_recv.get_last_sequence_number());
         }
 #endif
@@ -335,7 +331,7 @@ int main(int argc, char** argv) {
                     if (likely(recv_result == RTPReceiver::SUCCESS)) { // 正常受信
                         J2kBuf buf(&rtp_recv);
                         PID = rtp_recv.get_PID();
-                        while (table_index < j2k_packet_table.size() && j2k_packet_table[table_index].PID != PID) {
+                        while (table_index < j2k_packet_table.size() && j2k_packet_table[table_index].get_PID() != PID) {
                             j2k_packet_table[table_index].read_packet(buf);
                             ++table_index;
                         }
@@ -370,7 +366,7 @@ int main(int argc, char** argv) {
                         size_t loss_precinct = 0;
                         ++RTP_error_count;
                         while (true) {
-                            if (j2k_packet_table[table_index].PID == PID) break;
+                            if (j2k_packet_table[table_index].get_PID() == PID) break;
                             ++loss_precinct;
                             ++table_index;
                             if (table_index == j2k_packet_table.size()) {
