@@ -1,23 +1,117 @@
 #include "decoding_unit.hpp"
 #include "codestream.hpp"
+#include "opt_macro.hpp"
 #include <numeric>
 #include <vector>
 
 j2k_CodeBlock::j2k_CodeBlock(const j2k_region<uint32_t> rgn, uint8_t spos)
-    : region{rgn}, codeblock_data{}, length{}, number_of_zbp{}, band_pos{spos} {}
+    : region{rgn}, /*codeblock_data{},*/ length{}, number_of_zbp{}, band_pos{spos} {}
 
-j2k_Precinct::j2k_Precinct(j2k_Tile& tile, const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint8_t ns, uint32_t PID)
-    : pband{tile.resource_ptr<1>()}, region{rgn}, PID{PID} {
+void j2k_CodeBlock::read_packet_header(J2kBuf* const buf, uint8_t debug_resolution) {
+    [[maybe_unused]] static size_t call_count = 0;
+    ++call_count;
+
+    j2k_CodeBlock* const current_block = this;
+
+    if (BRANCH_PROB(buf->get_bit(), 0.365)) {
+        current_block->number_of_zbp = [&] {
+            uint8_t bits = 0;
+            while (!buf->get_bit()) ++bits;
+            return bits;
+        }();
+        // printf("zbp: %d\n", static_cast<uint32_t>(current_block->number_of_zbp));
+        // 符号化パス数を読む
+        uint32_t new_pass = 1;
+        new_pass += buf->get_bit();
+        if (BRANCH_PROB(new_pass >= 2, 0.9)) {
+            new_pass += buf->get_bit();
+            if (BRANCH_PROB(new_pass >= 3, 0.818)) {
+                new_pass += buf->get_bit(2);
+                if (BRANCH_PROB(new_pass >= 6, 0.0)) {
+                    new_pass += buf->get_bit(5);
+                    if (unlikely(new_pass >= 37)) {
+                        new_pass += buf->get_bit(7);
+                    }
+                }
+            }
+        }
+
+        uint8_t lblock = 3;
+        for (uint8_t i = 0; i < 15; ++i) {
+            if (buf->get_bit()) {
+                lblock++;
+            } else {
+                break;
+            }
+        }
+        // printf("lblock: %d\n", static_cast<uint32_t>(lblock));
+
+        uint32_t num_phld_passes = (new_pass - 1) / 3;
+        current_block->number_of_zbp += num_phld_passes;
+
+        num_phld_passes *= 3;
+        new_pass -= num_phld_passes;
+
+        uint32_t bits_to_read = lblock;
+        uint32_t segment_byte = buf->get_bit(bits_to_read);
+        // assert(segment_byte > 1);
+        if (unlikely(segment_byte <= 1)) throw buffer_leak("j2k segment byte", buffer_leak::ANALYSISING);
+        current_block->length = segment_byte;
+
+        if (new_pass > 1) {
+            bits_to_read = lblock + (new_pass > 2 ? 1 : 0);
+            segment_byte = buf->get_bit(bits_to_read);
+            current_block->length += segment_byte;
+        }
+        [[maybe_unused]] volatile auto opt = current_block->length;
+#if defined(GENERATE_LOG)
+        printf("%d,%d,%d\n", debug_resolution, band_pos, current_block->length);
+#endif
+    } else {
+        current_block->reuse();
+#if defined(GENERATE_LOG)
+        printf("%d,%d,0\n", debug_resolution, band_pos);
+#endif
+    }
+}
+
+void j2k_CodeBlock::send_hw_decoder(J2kBuf* const buf) {
+    buf->make_packet_data(length, nullptr);
+}
+
+j2k_Precinct::j2k_Precinct(j2k_Tile& tile, const j2k_Component& cmp, const j2k_Resolution& rsl, const j2k_region<uint32_t>& rgn, uint8_t ns, uint32_t PID)
+    : pband{tile.resource_ptr<1>()}, region{rgn}, PID{PID}, resolution_level{rsl.get_resolution_level()} {
 
     const pos2D ob[4] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
     pband.reserve(ns);
     for (uint8_t i = 0; i < ns; ++i) {
-        const uint8_t spos = 0;
+        const uint8_t spos = rsl.acs_subbands()[i].get_position();
         const uint8_t sr   = (spos == 0) ? 1 << 0 : 1 << 1;
 
         const pos2D pb_pos0 = ceil_int(region.pos0 - ob[spos], sr);
         const pos2D pb_pos1 = ceil_int(region.pos1 - ob[spos], sr);
         pband.emplace_back(j2k_CodeBlock{j2k_region<uint32_t>{pb_pos0, pb_pos1}, spos});
+    }
+}
+
+void j2k_Precinct::read_packet(J2kBuf& payload_buf) {
+    [[maybe_unused]] size_t call_count = 0;
+    call_count++;
+    if (unlikely(!payload_buf.get_bit())) { // empty packet
+        throw buffer_leak("j2k empty packet", buffer_leak::ANALYSISING);
+    }
+    for (auto& pb : pband) {
+#ifdef GENERATE_LOG
+        pb.acs_codeblock().read_packet_header(&payload_buf, resolution_level);
+#else
+        pb.acs_codeblock().read_packet_header(&payload_buf);
+#endif
+    }
+    payload_buf.check_FF();
+    payload_buf.r_fill();
+
+    for (auto& pb : pband) {
+        pb.acs_codeblock().send_hw_decoder(&payload_buf);
     }
 }
 
@@ -41,7 +135,7 @@ j2k_Resolution::j2k_Resolution(j2k_Tile& tile, const j2k_Component& cmp, const D
     const pos2D ob[4]     = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
     const uint8_t gain[4] = {0, 1, 1, 2};
     const uint8_t nb      = j2kprf::NL + 1 - resolution_level - !resolution_level;
-    uint8_t b_pos         = !!resolution_level + df_direction & 0b01;
+    uint8_t b_pos         = !!resolution_level + ((df_direction & 0b10) ? df_direction & 0b01 : 0);
     for (uint8_t sb = 0; sb < num_subband; ++sb) {
         const pos2D sb_pos0 = ceil_int(cmp.get_region().pos0 - (ob[b_pos] * (1 << (nb - 1))), 1 << nb);
         const pos2D sb_pos1 = ceil_int(cmp.get_region().pos1 - (ob[b_pos] * (1 << (nb - 1))), 1 << nb);
@@ -62,7 +156,7 @@ void j2k_Resolution::construct_precincts(j2k_Tile& tile, const j2k_Component& cm
         const pos2D xy(i % num_precinct.x, i / num_precinct.x);
         const pos2D p_pos0 = pos2D::max(region.pos0, psiz.pow2() * xy);
         const pos2D p_pos1 = pos2D::min(region.pos1, psiz.pow2() * (xy + 1));
-        precincts.emplace_back(tile, cmp, j2k_region<uint32_t>{p_pos0, p_pos1}, static_cast<uint8_t>(subbands.size()));
+        precincts.emplace_back(tile, cmp, *this, j2k_region<uint32_t>{p_pos0, p_pos1}, static_cast<uint8_t>(subbands.size()));
     }
 }
 
@@ -145,6 +239,7 @@ j2k_Component::j2k_Component(j2k_Tile& tile, uint8_t ci)
 
 void j2k_Tile::init(const MainHeader& mhd, J2kBuf& buf) {
     this->main_header = &mhd;
+    buf.step(buf.get_byte(2));
 
     region.pos0 = {0, 0};
     region.pos1 = pos2D::min(mhd.siz->get_Tsiz(), mhd.siz->get_Siz());
@@ -220,7 +315,7 @@ void j2k_Tile::build_table() {
         const auto p_pos0 = pos2D::max(rsl.get_region().pos0, prc_size.pow2() * xy);
         const auto p_pos1 = pos2D::min(rsl.get_region().pos1, prc_size.pow2() * (xy + 1));
         table.emplace_back(
-            *this, cmp, j2k_region<uint32_t>{p_pos0, p_pos1},
+            *this, cmp, rsl, j2k_region<uint32_t>{p_pos0, p_pos1},
             static_cast<uint8_t>(rsl.acs_subbands().size()), PID
         );
 

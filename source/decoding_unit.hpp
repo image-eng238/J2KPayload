@@ -25,7 +25,7 @@ class j2k_CodeBlock;
 class j2k_CodeBlock {
 private:
     j2k_region<uint32_t> region;
-    uint8_t* codeblock_data;
+    // uint8_t* codeblock_data;
     uint32_t length;
     uint8_t number_of_zbp;
     uint8_t band_pos;
@@ -33,6 +33,13 @@ private:
 public:
     j2k_CodeBlock() = default;
     j2k_CodeBlock(const j2k_region<uint32_t> rgn, uint8_t spos);
+    void read_packet_header(J2kBuf* const buf, uint8_t debug_resolution = 0);
+    void reuse() {
+        // codeblock_data = nullptr;
+        length        = 0;
+        number_of_zbp = 0;
+    }
+    void send_hw_decoder(J2kBuf* const buf);
 };
 
 class j2k_PrecinctSubband {
@@ -52,12 +59,14 @@ private:
     std::pmr::vector<j2k_PrecinctSubband> pband;
     j2k_region<uint32_t> region;
     uint32_t PID;
+    uint8_t resolution_level;
 
 public:
-    j2k_Precinct(j2k_Tile& tile, const j2k_Component& cmp, const j2k_region<uint32_t>& rgn, uint8_t ns, uint32_t PID = 0);
+    j2k_Precinct(j2k_Tile& tile, const j2k_Component& cmp, const j2k_Resolution& rsl, const j2k_region<uint32_t>& rgn, uint8_t ns, uint32_t PID = 0);
     const auto& acs_pband() const { return pband; }
     const auto& get_region() const { return region; }
     auto get_PID() const { return PID; }
+    void read_packet(J2kBuf& payload_buf);
 };
 
 class j2k_Subband {
@@ -141,6 +150,7 @@ public:
     j2k_child_resource* resource_ptr() { return heap_resources.get_resource<Index>(); }
     auto& acs_main_header() { return *main_header; }
     const auto& acs_main_header() const { return *main_header; }
+    auto& acs_table() { return table; }
     const auto& get_region() const { return region; }
     void init(const MainHeader& mhd, J2kBuf& buf);
     void add_total_precinct(uint32_t n) { total_precinct += n; }
