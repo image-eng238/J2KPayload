@@ -323,15 +323,14 @@ int main(int argc, char** argv) {
         while (!sig_flag) {
 #ifdef DISABLE_TABLE
             MainHeader main_header;
-            Tile j2k_tile;
-            std::array<fast_table, ConstValue::num_precinct * ConstValue::Csiz> j2k_packet_table{};
+            j2k_Tile j2k_tile;
+            auto& j2k_packet_table = j2k_tile.acs_table();
             {
-                while (rtp_recv.check() != RTPReceiver::MAIN_HEADER);
+                while (rtp_recv.load_main_packet() != RTPReceiver::MAIN_HEADER);
                 avg_frame = clock_t::now();
                 J2kBuf buf(&rtp_recv);
                 main_header.read(buf);
                 j2k_tile.init(main_header, buf);
-                j2k_tile.read(main_header, j2k_packet_table);
                 printf("main header read, seq: %d\n", rtp_recv.get_last_sequence_number());
             }
             while (true)
