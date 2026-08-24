@@ -154,6 +154,8 @@ public:
     const auto& get_region() const { return region; }
     void init(const MainHeader& mhd, J2kBuf& buf);
     void add_total_precinct(uint32_t n) { total_precinct += n; }
+    size_t get_total_precinct() const { return total_precinct; }
     void add_total_pband(uint32_t n) { total_pband += n; }
+    size_t get_total_pband() { return total_pband; }
     void build_table();
 };
