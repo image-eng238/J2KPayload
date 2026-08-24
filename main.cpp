@@ -244,44 +244,6 @@ int main(int argc, char** argv) {
         size_t table_index     = 0;
         uint32_t PID           = 0;
         uint32_t last_sequence = 0;
-        auto frame_update      = [&]() {
-            if (frame_lost_precinct != 0) {
-                const auto lost_per = static_cast<double>(frame_lost_precinct) / ConstValue::all_precinct * 100;
-                fprintf(
-                    stderr,
-                    "    analysis_frame: %ld, lost_precinct: %d/%d, %.6lf%%\n",
-                    analysis_frame, frame_lost_precinct, ConstValue::all_precinct, lost_per
-                );
-                frame_lost_precinct = 0;
-            }
-            ++analysis_frame;
-
-            img_clock += to_duration(img_inc.load(std::memory_order_acquire));
-            std::this_thread::sleep_until(img_clock);
-            const auto now                     = clock_t::now();
-            [[maybe_unused]] const auto jitter = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(now - img_clock).count();
-#ifdef RTP_CLOCK_CHECK
-            if (debug_clock_it != debug_clock_it_end) *debug_clock_it = now;
-            ++debug_clock_it;
-#endif
-            if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-                if (output_format == OutF::FPS) {
-                    const auto avg_fps = 1 / ((static_cast<double>(avg.count()) / 1000) / out_flame) * 1000;
-                    sum_avg += avg_fps;
-                    // printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
-                    printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld\n", analysis_frame, avg_fps, buffer.get_num_data());
-                    // printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_fps, buffer.get_num_data(), jitter);
-                } else if (output_format == OutF::MS) {
-                    const auto avg_ms = (static_cast<double>(avg.count()) / out_flame) / 1000;
-                    sum_avg += avg_ms;
-                    // printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, avg_ms);
-                    printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld\n", analysis_frame, avg_ms, buffer.get_num_data());
-                    // printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_ms, buffer.get_num_data(), jitter);
-                }
-                avg_frame = now;
-            }
-        };
 
         j2k_Tile::resource_t prealloc;
         if (prealloc_precinct != 0) {
@@ -336,6 +298,45 @@ int main(int argc, char** argv) {
             while (true)
 #endif
                 try {
+                    auto frame_update = [&]() {
+                        if (frame_lost_precinct != 0) {
+                            const auto lost_per = static_cast<double>(frame_lost_precinct) / j2k_tile.get_total_precinct() * 100;
+                            fprintf(
+                                stderr,
+                                "    analysis_frame: %ld, lost_precinct: %d/%ld, %.6lf%%\n",
+                                analysis_frame, frame_lost_precinct, j2k_tile.get_total_precinct(), lost_per
+                            );
+                            frame_lost_precinct = 0;
+                        }
+                        ++analysis_frame;
+
+                        img_clock += to_duration(img_inc.load(std::memory_order_acquire));
+                        std::this_thread::sleep_until(img_clock);
+                        const auto now                     = clock_t::now();
+                        [[maybe_unused]] const auto jitter = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(now - img_clock).count();
+#ifdef RTP_CLOCK_CHECK
+                        if (debug_clock_it != debug_clock_it_end) *debug_clock_it = now;
+                        ++debug_clock_it;
+#endif
+                        if (out_flame != 0 && analysis_frame % out_flame == 0) {
+                            auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
+                            if (output_format == OutF::FPS) {
+                                const auto avg_fps = 1 / ((static_cast<double>(avg.count()) / 1000) / out_flame) * 1000;
+                                sum_avg += avg_fps;
+                                // printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
+                                printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld\n", analysis_frame, avg_fps, buffer.get_num_data());
+                                // printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_fps, buffer.get_num_data(), jitter);
+                            } else if (output_format == OutF::MS) {
+                                const auto avg_ms = (static_cast<double>(avg.count()) / out_flame) / 1000;
+                                sum_avg += avg_ms;
+                                // printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, avg_ms);
+                                printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld\n", analysis_frame, avg_ms, buffer.get_num_data());
+                                // printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_ms, buffer.get_num_data(), jitter);
+                            }
+                            avg_frame = now;
+                        }
+                    };
+
                     last_sequence          = rtp_recv.get_last_sequence_number();
                     const auto recv_result = rtp_recv.load_body_packet();
                     if (likely(recv_result == RTPReceiver::SUCCESS)) { // 正常受信
