@@ -262,18 +262,21 @@ int main(int argc, char** argv) {
         auto& j2k_packet_table = j2k_tile.acs_table();
         {
             int32_t result = 0;
+            std::chrono::high_resolution_clock::time_point t;
             while (true) {
                 result = rtp_recv.load_main_packet();
-                if (result == RTPReceiver::MAIN_HEADER) break;
-                if (result == RTPReceiver::FINISH) {
-                    return;
+                if (result == RTPReceiver::MAIN_HEADER) {
+                    t = std::chrono::high_resolution_clock::now();
+                    break;
                 }
+                if (result == RTPReceiver::FINISH) { return; }
             }
             // avg_frame = clock_t::now();
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
-            printf("main header read, seq: %d\n", rtp_recv.get_last_sequence_number());
+            auto r = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - t);
+            printf("main header read, seq: %d, time: %ldns\n", rtp_recv.get_last_sequence_number(), r.count());
         }
 #endif
         if (likely(!is_enter)) {
@@ -288,14 +291,19 @@ int main(int argc, char** argv) {
             j2k_Tile j2k_tile;
             auto& j2k_packet_table = j2k_tile.acs_table();
             {
-                while (rtp_recv.load_main_packet() != RTPReceiver::MAIN_HEADER);
+                int32_t result = 0;
+                while (true) {
+                    result = rtp_recv.load_main_packet();
+                    if (result == RTPReceiver::MAIN_HEADER) { break; }
+                    if (result == RTPReceiver::FINISH) { return; }
+                }
                 avg_frame = clock_t::now();
                 J2kBuf buf(&rtp_recv);
                 main_header.read(buf);
                 j2k_tile.init(main_header, buf);
-                printf("main header read, seq: %d\n", rtp_recv.get_last_sequence_number());
+                // printf("main header read, seq: %d\n", rtp_recv.get_last_sequence_number());
             }
-            while (true)
+            while (!sig_flag)
 #endif
                 try {
                     auto frame_update = [&]() {
@@ -352,6 +360,9 @@ int main(int argc, char** argv) {
                             rtp_recv.terminate();
                             table_index = 0;
                             frame_update();
+#ifdef DISABLE_TABLE
+                            break;
+#endif
                         }
                     } else if (recv_result == RTPReceiver::MAIN_HEADER) { // メインパケット出現
                         const auto in_buf = buffer.get_num_data();
