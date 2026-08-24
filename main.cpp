@@ -55,8 +55,6 @@ int main(int argc, char** argv) {
     CPU_ZERO(&affinity_analysis);
     constexpr size_t MAX_BUFFER_LENGTH = 1360 * 10;
     size_t buffer_length               = MAX_BUFFER_LENGTH;
-    double rf_r                        = 0.5;
-    double rf_a                        = 0.25;
     bool is_enter                      = false;
     enum class OutF : uint8_t {
         FPS,
@@ -80,7 +78,6 @@ int main(int argc, char** argv) {
             optspec_t{'C', "analysis_affinity", true, "CPU affinity of the analysis thread"},
             optspec_t{'b', "BufferLength", true, "Receive buffer length, default: 13600, max: 13600"},
             optspec_t{0, "Precinct", true, "Number of precinct's to be allocated in advance"},
-            optspec_t{0, "ReceiveFrequency", true, "The multiplier for the receiving thread frequency (90kHz). Fromat: \"receive:again\",default: 0.5:0.25"},
             optspec_t{0, "Enter", false, "analysis thread continue at enter"},
             optspec_t{0, "OutputFormat", true, "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
 #ifdef RTP_CLOCK_CHECK
@@ -137,12 +134,6 @@ int main(int argc, char** argv) {
                 } break;
                 case opts("Precinct"):
                     prealloc_precinct = args.get_value<size_t>().value_or(0);
-                    break;
-                case opts("ReceiveFrequency"):
-                    if (auto tmp = args.get_interval<double>(':'); tmp) {
-                        rf_r = tmp->first;
-                        rf_a = tmp->last;
-                    }
                     break;
                 case opts("Enter"):
                     is_enter = true;
@@ -261,17 +252,18 @@ int main(int argc, char** argv) {
         j2k_tile.move_resource(std::move(prealloc));
         auto& j2k_packet_table = j2k_tile.acs_table();
         {
-            int32_t result = 0;
-            std::chrono::high_resolution_clock::time_point t;
+            int result = 0;
+            clock_t::time_point t;
             while (true) {
                 result = rtp_recv.load_main_packet();
                 if (result == RTPReceiver::MAIN_HEADER) {
-                    t = std::chrono::high_resolution_clock::now();
+                    t = clock_t::now();
                     break;
                 }
                 if (result == RTPReceiver::FINISH) { return; }
             }
-            // avg_frame = clock_t::now();
+            img_clock = clock_t::now();
+            avg_frame = img_clock;
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
@@ -279,12 +271,10 @@ int main(int argc, char** argv) {
             printf("main header read, seq: %d, time: %ldns\n", rtp_recv.get_last_sequence_number(), r.count());
         }
 #endif
-        if (likely(!is_enter)) {
-            std::unique_lock lk{img_clock_locker};
-            img_clock_cond.wait(lk);
-        }
+#ifdef DISABLE_TABLE
         img_clock = clock_t::now();
         avg_frame = img_clock;
+#endif
         while (!sig_flag) {
 #ifdef DISABLE_TABLE
             MainHeader main_header;
@@ -319,7 +309,7 @@ int main(int argc, char** argv) {
                         ++analysis_frame;
 
                         img_clock += to_duration(img_inc.load(std::memory_order_acquire));
-                        std::this_thread::sleep_until(img_clock);
+                        // std::this_thread::sleep_until(img_clock);
                         const auto now                     = clock_t::now();
                         [[maybe_unused]] const auto jitter = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(now - img_clock).count();
 #ifdef RTP_CLOCK_CHECK
@@ -365,24 +355,7 @@ int main(int argc, char** argv) {
 #endif
                         }
                     } else if (recv_result == RTPReceiver::MAIN_HEADER) { // メインパケット出現
-                        const auto in_buf = buffer.get_num_data();
-                        if (in_buf > 1360 * 3) {
-                            buffer.dest(
-                                [&](const uint8_t* data) { return RTPHeader_trait::get_M(data); },
-                                [&](const uint8_t* data) { rtp_recv.set_last_sequence_number(J2KPayloadHeader_trait::get_extended_sequence_number(data)); }
-                            );
-                            rtp_recv.terminate();
-                            const auto post_in_buf = buffer.get_num_data();
-                            fprintf(stderr, "  frame discarded by clockskew analysis_frame: %ld, in buf: %ld -> %ld\n", analysis_frame, in_buf, post_in_buf);
-                            ++loss_frame;
-                        } else if (in_buf < size_t(1360 * 0.75)) {
-                            const auto in_buf = buffer.get_num_data();
-                            frame_update();
-                            rtp_recv.terminate();
-                            const auto post_in_buf = buffer.get_num_data();
-                            fprintf(stderr, "  frame interpolation by clockskew analysis_frame: %ld, in buf: %ld -> %ld\n", analysis_frame, in_buf, post_in_buf);
-                            ++interpolate_frame;
-                        }
+
                     } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス
                         PID                  = rtp_recv.get_PID();
                         size_t loss_precinct = 0;
@@ -464,12 +437,9 @@ int main(int argc, char** argv) {
         uint32_t pre_timestamp = 0;
         uint32_t pre_TPSTAMP   = 0;
         uint32_t pre_flow      = 0;
-        const auto pkt_inc_r   = to_duration(rf_r);
-        const auto pkt_inc_a   = to_duration(rf_a);
 
         printf("receive thread ready...\n");
         receive_start    = clock_t::now();
-        auto packet_abs  = receive_start;
         bool is_img_init = false;
         while (!sig_flag) {
             const auto result = buffer.receive();
@@ -481,12 +451,12 @@ int main(int argc, char** argv) {
                 const auto* pkt = buffer.get_last_packet();
                 if (J2KPayloadHeader_trait::get_MH(pkt->data + RTPHeader_trait::get_header_length())) { // EOCの有無を確認 メインヘッダで確認に変更
                     const auto tp = RTPHeader_trait::get_timestamp(pkt->data);
-                    if (!is_img_init && pre_timestamp != 0 && tp != 0) {
-                        // std::unique_lock lk{img_clock_locker};
-                        img_inc.store(tp - pre_timestamp, std::memory_order_release);
-                        img_clock_cond.notify_one();
-                        is_img_init = true;
-                    }
+                    // if (!is_img_init && pre_timestamp != 0 && tp != 0) {
+                    //     // std::unique_lock lk{img_clock_locker};
+                    //     img_inc.store(tp - pre_timestamp, std::memory_order_release);
+                    //     img_clock_cond.notify_one();
+                    //     is_img_init = true;
+                    // }
                     // img_clock_cond.notify_one();
                     pre_timestamp = tp;
                 }
@@ -501,13 +471,7 @@ int main(int argc, char** argv) {
                     }
                 }
                 pre_TPSTAMP = TPS;
-                // メディアクロックとPTSTAMPをもとに待機時間を算出
-                // packet_abs += pkt_inc_r;
-                // std::this_thread::sleep_until(packet_abs);
             } else if (result == leaky_bucket_buf::AGAIN) {
-                // false: メディアクロックの 1/4 で待機
-                // packet_abs += pkt_inc_a;
-                // std::this_thread::sleep_until(packet_abs);
             } else if (result == leaky_bucket_buf::SIGNAL) {
                 img_clock_cond.notify_one();
                 break;
@@ -543,20 +507,6 @@ int main(int argc, char** argv) {
             exit(1);
         }
     }
-    // sched_param sched;
-    // sched.sched_priority = 80;
-    // if (CPU_COUNT(&affinity) != 0) {
-    //     if (pthread_setschedparam(receive_thread.native_handle(), SCHED_FIFO, &sched) != 0) {
-    //         perror("pthread_setschedparams");
-    //         exit(1);
-    //     }
-    // }
-    // if (CPU_COUNT(&affinity_analysis) != 0) {
-    //     if (pthread_setschedparam(analysis_thread.native_handle(), SCHED_FIFO, &sched) != 0) {
-    //         perror("pthread_setschedparam");
-    //         exit(1);
-    //     }
-    // }
 
     if (unlikely(is_enter)) {
         printf("Press Enter to continue\n");
