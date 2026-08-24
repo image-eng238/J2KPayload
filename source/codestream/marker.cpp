@@ -105,8 +105,10 @@ COD::COD(J2kBuf& in) {
     const uint16_t length = in.get_byte(2);
     Scod                  = in.get_byte();
     SGcod                 = in.get_byte(4);
-    for (uint16_t i = 0; i < length - 7; ++i)
-        SPcod[i] = in.get_byte();
+    for (uint16_t i = 0; i < length - 7; ++i) {
+        // SPcod[i] = in.get_byte();
+        SPcod.at(i) = in.get_byte();
+    }
 }
 uint8_t COD::get_coding_style() const { return Scod; };
 bool COD::get_precinct_type() const { return Scod & 0b0000'0001; }
@@ -143,8 +145,10 @@ COC::COC(J2kBuf& in, const uint16_t Csiz) {
         n    = 2;
     }
     Scoc = in.get_byte();
-    for (uint16_t i = 0; i < length - (3 + n); ++i)
-        SPcoc[i] = in.get_byte();
+    for (uint16_t i = 0; i < length - (3 + n); ++i) {
+        // SPcoc[i] = in.get_byte();
+        SPcoc.at(i) = in.get_byte();
+    }
 }
 uint16_t COC::get_component_index() const { return Ccoc; }
 uint8_t COC::get_coding_style() const { return Scoc; }
