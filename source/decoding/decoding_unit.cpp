@@ -252,11 +252,15 @@ void j2k_Tile::init(const MainHeader& mhd, J2kBuf& buf) {
 
 void j2k_Tile::build_table() {
     if (!heap_resources.is_allocated()) {
-        auto t    = std::chrono::high_resolution_clock::now();
-        auto size = heap_resources.prev_allocate(total_precinct, total_pband);
-        auto r    = std::chrono::high_resolution_clock::now() - t;
+#if defined(GENERATE_LOG)
+        auto t = std::chrono::high_resolution_clock::now();
+#endif
+        [[maybe_unused]] auto size = heap_resources.prev_allocate(total_precinct, total_pband);
+#if defined(GENERATE_LOG)
+        auto r = std::chrono::high_resolution_clock::now() - t;
         std::cout << "alloc time(ns) = " << std::chrono::duration_cast<std::chrono::nanoseconds>(r).count()
                   << ", size(byte) = " << size << std::endl;
+#endif
     }
     table.reserve(total_precinct);
 
