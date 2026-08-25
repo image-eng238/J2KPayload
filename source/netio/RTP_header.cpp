@@ -209,7 +209,7 @@ int RTPReceiver::load_body_packet() {
             if (unlikely(get_MH(pkt.data() + hd))) { // メインヘッダ出現
                 assert(j2k_packets.empty());
                 j2k_packets.push_back(parse_rtp_header(pkt, MAIN_PACKET));
-                continue;
+                return MAIN_HEADER;
             }
 
             if (get_body_ORDB(pkt.data() + hd)) { // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
