@@ -198,6 +198,9 @@ int main(int argc, char** argv) {
     j2k_measure pkt_process{};
     long double pkt_process_sum = 0;
 
+    j2k_measure pkt_wait{};
+    long double pkt_wait_sum = 0;
+
     std::atomic_bool analysis_stoper = false;
 
     std::mutex img_clock_locker;
@@ -303,6 +306,7 @@ int main(int argc, char** argv) {
 #endif
                 try {
                     auto frame_update = [&]() {
+                        const auto now = clock_t::now();
                         if (frame_lost_precinct != 0) {
                             const auto lost_per = static_cast<double>(frame_lost_precinct) / j2k_tile.get_total_precinct() * 100;
                             fprintf(
@@ -316,7 +320,6 @@ int main(int argc, char** argv) {
 
                         img_clock += to_duration(img_inc.load(std::memory_order_acquire));
                         // std::this_thread::sleep_until(img_clock);
-                        const auto now                     = clock_t::now();
                         [[maybe_unused]] const auto jitter = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(now - img_clock).count();
 
                         pkt_process.toc_push(now);
@@ -327,27 +330,37 @@ int main(int argc, char** argv) {
 #endif
                         if (out_flame != 0 && analysis_frame % out_flame == 0) {
                             frame_process.toc(now);
-                            const auto pa_avg_ms = pkt_process.average();
-                            pkt_process_sum += pa_avg_ms;
+                            const auto pkt_proc_ms = pkt_process.average(out_flame);
+                            pkt_process_sum += pkt_proc_ms;
+                            const auto pkt_wait_ms = pkt_wait.average(out_flame);
+                            pkt_wait_sum += pkt_wait_ms;
 
-                            if (output_format == OutF::FPS) {
-                                const auto avg_fps = 1 / frame_process.average<std::chrono::seconds>(out_flame);
-                                frame_process_sum += avg_fps;
-                                printf("analysis_frame: %ld, avg: %.6f fps, pkt: %.6f ms\n", analysis_frame, avg_fps, pa_avg_ms);
-                                // printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_fps, buffer.get_num_data(), jitter);
-                            } else if (output_format == OutF::MS) {
-                                const auto avg_ms = frame_process.average(out_flame);
-                                frame_process_sum += avg_ms;
-                                printf("analysis_frame: %ld, avg: %.6f ms, pkt: %.6f ms\n", analysis_frame, avg_ms, pa_avg_ms);
-                                // printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_ms, buffer.get_num_data(), jitter);
+                            double out_value     = 0;
+                            const char* out_unit = nullptr;
+                            switch (output_format) {
+                                case OutF::FPS:
+                                    out_value = 1 / frame_process.average<std::chrono::seconds>(out_flame);
+                                    out_unit  = "fps";
+                                    break;
+                                case OutF::MS:
+                                    out_value = frame_process.average(out_flame);
+                                    out_unit  = "ms";
+                                    break;
+                                default:
+                                    assert(false);
                             }
-                            j2k_measure::reset_for({&frame_process, &pkt_process});
+                            frame_process_sum += out_value;
+                            printf("frame: %ld, avg: %f %s, proc: %f ms, wait: %f ms\n", analysis_frame, out_value, out_unit, pkt_proc_ms, pkt_wait_ms);
+
+                            j2k_measure::reset_for({&frame_process, &pkt_process, &pkt_wait});
                             j2k_measure::tic_for({&frame_process, &pkt_process}, now);
                         }
                     };
 
-                    last_sequence          = rtp_recv.get_last_sequence_number();
+                    last_sequence = rtp_recv.get_last_sequence_number();
+                    pkt_wait.tic(pkt_process.toc_push());
                     const auto recv_result = rtp_recv.load_body_packet();
+                    pkt_wait.toc_push(pkt_process.tic());
                     if (likely(recv_result == RTPReceiver::SUCCESS)) { // 正常受信
                         J2kBuf buf(&rtp_recv);
                         PID = rtp_recv.get_PID();
@@ -398,7 +411,6 @@ int main(int argc, char** argv) {
 #endif
                         break;
                     }
-
                 } catch (buffer_leak& e) {
                     // buffer.clear();
                     const auto in_buf = buffer.get_num_data();
@@ -539,6 +551,7 @@ int main(int argc, char** argv) {
     } else {
         printf("average fps: %Lfms\n", frame_process_sum / (analysis_frame / out_flame));
     }
+    printf("process: %Lf ms, wait: %Lf ms\n", pkt_process_sum / (analysis_frame / out_flame), pkt_wait_sum / (analysis_frame / out_flame));
     printf("analysis frame: %ld\n", analysis_frame);
     printf("lost frame: %ld\n", loss_frame);
     printf("lost packets: %ld/%ld\n", sum_lost_packet, analysis_frame * 1360);
