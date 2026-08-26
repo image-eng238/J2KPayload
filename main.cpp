@@ -28,6 +28,8 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 
 #include "argument.hpp"
 
+#include "measure.hpp"
+
 #include <vector>
 #include <string_view>
 #include <charconv>
@@ -180,22 +182,21 @@ int main(int argc, char** argv) {
     leaky_bucket_buf buffer(&udp, packet_buffer, buffer_length);
     RTPReceiver rtp_recv(&buffer);
 
-    clock_t::time_point avg_frame;
     size_t analysis_frame          = 0;
     size_t loss_frame              = 0;
-    size_t interpolate_frame       = 0;
     uint32_t frame_lost_precinct   = 0;
     size_t RTP_error_count         = 0;
     size_t J2K_error_count         = 0;
     size_t error_counts[3]         = {};
-    long double sum_avg            = 0;
     size_t sum_lost_packet         = 0;
     double analysis_operating_time = 0;
     double receive_operating_time  = 0;
 
-    clock_t::time_point pkt_analysis_start{}, pkt_analysis_end{};
-    clock_t::duration pkt_analysis_avg{};
-    long double pkt_analysis_sum_avg = 0;
+    j2k_measure frame_process{};
+    long double frame_process_sum = 0;
+
+    j2k_measure pkt_process{};
+    long double pkt_process_sum = 0;
 
     std::atomic_bool analysis_stoper = false;
 
@@ -257,28 +258,22 @@ int main(int argc, char** argv) {
         auto& j2k_packet_table = j2k_tile.acs_table();
         {
             int result = 0;
-            clock_t::time_point t;
+            j2k_measure mhd_process{};
             while (true) {
                 result = rtp_recv.load_main_packet();
                 if (result == RTPReceiver::MAIN_HEADER) {
-                    t = clock_t::now();
+                    img_clock = mhd_process.tic();
+                    j2k_measure::tic_for({&frame_process, &pkt_process}, img_clock);
                     break;
                 }
                 if (result == RTPReceiver::FINISH) { return; }
             }
-            img_clock          = clock_t::now();
-            avg_frame          = img_clock;
-            pkt_analysis_start = img_clock;
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
-            auto r = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - t);
-            printf("main header read, seq: %d, time: %ldns\n", rtp_recv.get_last_sequence_number(), r.count());
+            mhd_process.toc();
+            printf("main header read, seq: %d, time: %.6fms\n", rtp_recv.get_last_sequence_number(), mhd_process.get());
         }
-#endif
-#ifdef DISABLE_TABLE
-        img_clock = clock_t::now();
-        avg_frame = img_clock;
 #endif
         while (!sig_flag) {
 #ifdef DISABLE_TABLE
@@ -286,13 +281,19 @@ int main(int argc, char** argv) {
             j2k_Tile j2k_tile;
             auto& j2k_packet_table = j2k_tile.acs_table();
             {
-                int32_t result = 0;
+                static bool first_mhd = false;
+                int32_t result        = 0;
                 while (true) {
                     result = rtp_recv.load_main_packet();
                     if (result == RTPReceiver::MAIN_HEADER) { break; }
                     if (result == RTPReceiver::FINISH) { return; }
                 }
-                avg_frame = clock_t::now();
+                if (!first_mhd) {
+                    img_clock = clock_t::now();
+                    frame_process.tic(img_clock);
+                    first_mhd = true;
+                }
+                pkt_process.tic();
                 J2kBuf buf(&rtp_recv);
                 main_header.read(buf);
                 j2k_tile.init(main_header, buf);
@@ -318,33 +319,30 @@ int main(int argc, char** argv) {
                         const auto now                     = clock_t::now();
                         [[maybe_unused]] const auto jitter = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(now - img_clock).count();
 
-                        pkt_analysis_end = now;
-                        pkt_analysis_avg += pkt_analysis_end - pkt_analysis_start;
+                        pkt_process.toc_push(now);
 
 #ifdef RTP_CLOCK_CHECK
                         if (debug_clock_it != debug_clock_it_end) *debug_clock_it = now;
                         ++debug_clock_it;
 #endif
                         if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                            auto avg             = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-                            auto pa_avg          = std::chrono::duration_cast<std::chrono::microseconds>(pkt_analysis_avg);
-                            const auto pa_avg_ms = (static_cast<double>(pa_avg.count()) / out_flame) / 1000;
-                            pkt_analysis_sum_avg += pa_avg_ms;
+                            frame_process.toc(now);
+                            const auto pa_avg_ms = pkt_process.average();
+                            pkt_process_sum += pa_avg_ms;
+
                             if (output_format == OutF::FPS) {
-                                const auto avg_fps = 1 / ((static_cast<double>(avg.count()) / 1000) / out_flame) * 1000;
-                                sum_avg += avg_fps;
-                                // printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
-                                printf("analysis_frame: %ld, avg: %.6f fps, pkt: %.6f ms, in buf: %ld\n", analysis_frame, avg_fps, pa_avg_ms, buffer.get_num_data());
+                                const auto avg_fps = 1 / frame_process.average<std::chrono::seconds>(out_flame);
+                                frame_process_sum += avg_fps;
+                                printf("analysis_frame: %ld, avg: %.6f fps, pkt: %.6f ms\n", analysis_frame, avg_fps, pa_avg_ms);
                                 // printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_fps, buffer.get_num_data(), jitter);
                             } else if (output_format == OutF::MS) {
-                                const auto avg_ms = (static_cast<double>(avg.count()) / out_flame) / 1000;
-                                sum_avg += avg_ms;
-                                // printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, avg_ms);
-                                printf("analysis_frame: %ld, avg: %.6f ms, pkt: %.6f ms, in buf: %ld\n", analysis_frame, avg_ms, pa_avg_ms, buffer.get_num_data());
+                                const auto avg_ms = frame_process.average(out_flame);
+                                frame_process_sum += avg_ms;
+                                printf("analysis_frame: %ld, avg: %.6f ms, pkt: %.6f ms\n", analysis_frame, avg_ms, pa_avg_ms);
                                 // printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_ms, buffer.get_num_data(), jitter);
                             }
-                            avg_frame        = now;
-                            pkt_analysis_avg = {};
+                            j2k_measure::reset_for({&frame_process, &pkt_process});
+                            j2k_measure::tic_for({&frame_process, &pkt_process}, now);
                         }
                     };
 
@@ -368,7 +366,7 @@ int main(int argc, char** argv) {
 #endif
                         }
                     } else if (recv_result == RTPReceiver::MAIN_HEADER) { // メインパケット出現
-                        pkt_analysis_start = clock_t::now();
+                        pkt_process.tic();
                     } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス
                         PID                  = rtp_recv.get_PID();
                         size_t loss_precinct = 0;
@@ -537,12 +535,11 @@ int main(int argc, char** argv) {
     printf("analysis thread's operating time: %lfs\n", analysis_operating_time);
     printf("receive thread's operating time: %lfs\n", receive_operating_time);
     if (output_format == OutF::FPS) {
-        printf("average fps: %Lffps\n", sum_avg / (analysis_frame / out_flame));
+        printf("average fps: %Lffps\n", frame_process_sum / (analysis_frame / out_flame));
     } else {
-        printf("average fps: %Lfms\n", sum_avg / (analysis_frame / out_flame));
+        printf("average fps: %Lfms\n", frame_process_sum / (analysis_frame / out_flame));
     }
     printf("analysis frame: %ld\n", analysis_frame);
-    printf("interpolate  frame: %ld\n", interpolate_frame);
     printf("lost frame: %ld\n", loss_frame);
     printf("lost packets: %ld/%ld\n", sum_lost_packet, analysis_frame * 1360);
     printf("packet loss rate: %lf%%\n", (sum_lost_packet / (analysis_frame * 1360.0)) * 100);
