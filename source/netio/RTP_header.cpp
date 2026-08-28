@@ -148,43 +148,6 @@ void RTPReceiver::pop(uint8_t*& ptr, size_t& len) {
     }
 }
 
-int RTPReceiver::load_main_packet(packet_t* const copy_main_pkt) {
-    using namespace RTPHeader_trait;
-    using namespace J2KPayloadHeader_trait;
-    const auto hd = RTPHeader_trait::get_header_length();
-    packet_t pkt;
-
-    while (true) {
-
-        pkt = buffer->pop();
-        if (unlikely(pkt.size() == 1 && RTPHeader_trait::get_V(pkt.data()) != 0b10)) return this->FINISH;
-
-        const auto current_sequence = get_extended_sequence_number(pkt.data());
-        const auto pre_sequence     = pre_sequence_number;
-        pre_sequence_number         = current_sequence;
-
-        if (get_MH(pkt.data() + hd)) { // メインヘッダ出現
-            assert(j2k_packets.empty());
-            j2k_packets.push_back(parse_rtp_header(pkt, MAIN_PACKET));
-            if (copy_main_pkt != nullptr) {
-                const auto* const m_pkt = &j2k_packets.back();
-                assert(m_pkt->size() <= copy_main_pkt->size());
-                memcpy(copy_main_pkt->data(), m_pkt->data(), m_pkt->size());
-                copy_main_pkt->len = m_pkt->size();
-            }
-            continue;
-        } else {
-            if (get_body_ORDB(pkt.data() + hd)) { // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
-                j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_HEAD));
-                j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_TAIL));
-                PID = get_body_PID(pkt.data() + hd);
-                pos = 0;
-                return this->MAIN_HEADER;
-            }
-        }
-    }
-}
-
 int RTPReceiver::load_body_packet() {
     using namespace RTPHeader_trait;
     using namespace J2KPayloadHeader_trait;
@@ -233,7 +196,7 @@ int RTPReceiver::load_body_packet() {
                 }
             }
         } else {
-            fprintf(stderr, "pre: %d, seq: %d, diff: %d\n", pre_sequence, current_sequence, current_sequence - pre_sequence);
+            // fprintf(stderr, "pre: %d, seq: %d, diff: %d\n", pre_sequence, current_sequence, current_sequence - pre_sequence);
             // パケットロス発生 次の再同期ポイントまでパケットを破棄
             terminate();
             if (unlikely(current_sequence == 0)) {

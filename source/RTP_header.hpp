@@ -386,7 +386,39 @@ public:
     int32_t check();
     void pop(uint8_t*&, size_t&);
 
-    int load_main_packet(packet_t* const copy_main_pkt = nullptr);
+    template <typename Callback = void(const packet_t&)>
+    int load_main_packet(Callback callback = [](const packet_t&) -> void {}) {
+        using namespace RTPHeader_trait;
+        using namespace J2KPayloadHeader_trait;
+        const auto hd = RTPHeader_trait::get_header_length();
+        packet_t pkt;
+
+        while (true) {
+
+            pkt = buffer->pop();
+            if (unlikely(pkt.size() == 1 && RTPHeader_trait::get_V(pkt.data()) != 0b10)) return this->FINISH;
+
+            const auto current_sequence = get_extended_sequence_number(pkt.data());
+            const auto pre_sequence     = pre_sequence_number;
+            pre_sequence_number         = current_sequence;
+
+            if (get_MH(pkt.data() + hd)) { // メインヘッダ出現
+                assert(j2k_packets.empty());
+                j2k_packets.push_back(parse_rtp_header(pkt, MAIN_PACKET));
+                callback(j2k_packets.back());
+                continue;
+            } else {
+                if (get_body_ORDB(pkt.data() + hd)) { // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
+                    j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_HEAD));
+                    j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_TAIL));
+                    PID = get_body_PID(pkt.data() + hd);
+                    pos = 0;
+                    return this->MAIN_HEADER;
+                }
+            }
+        }
+    }
+
     int load_body_packet();
     packet_t pop();
     void terminate() {
