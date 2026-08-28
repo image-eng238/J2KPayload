@@ -40,6 +40,13 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 #include <pthread.h>
 
 #include <csignal>
+#include <cinttypes>
+#include <future>
+
+#define TAG_INFO "INFO "
+#define TAG_ERR "ERR "
+#define TAG_LOG ""
+#define TAG_SUMMARY "SUMMARY "
 
 constexpr size_t MAX_PACKET_SIZE = 1384;
 sig_atomic_t sig_flag            = 0;
@@ -201,12 +208,23 @@ int main(int argc, char** argv) {
     j2k_measure pkt_wait{};
     long double pkt_wait_sum = 0;
 
+    size_t out_frame_backup;
+    if (out_flame == 0) {
+        out_frame_backup = 0;
+    } else {
+        out_frame_backup = out_flame;
+        out_flame        = 1;
+    }
+
     std::atomic_bool analysis_stoper = false;
 
     std::mutex img_clock_locker;
     std::condition_variable img_clock_cond;
     std::atomic_uint32_t img_inc = 0;
     clock_t::time_point img_clock;
+
+    std::promise<void> first_mhd_prm;
+    std::future<void> first_mhd_ftr = first_mhd_prm.get_future();
 
     auto to_duration = [](const auto t) constexpr { return std::chrono::duration_cast<clock_t::duration>(std::chrono::duration<double>{t * (1.0 / J2KPayloadHeader_trait::media_clock_Hz)}); };
 
@@ -251,7 +269,7 @@ int main(int argc, char** argv) {
         if (unlikely(is_enter)) {
             while (!analysis_stoper);
         }
-        printf("analysis thread ready...\n");
+        printf(TAG_INFO "msg=\"analysis thread ready...\"\n");
         analysis_start = clock_t::now();
 
 #ifndef DISABLE_TABLE
@@ -263,9 +281,10 @@ int main(int argc, char** argv) {
             int result = 0;
             j2k_measure mhd_process{};
             while (true) {
-                result = rtp_recv.load_main_packet();
-                if (result == RTPReceiver::MAIN_HEADER) {
+                result = rtp_recv.load_main_packet([&](const packet_t&) {
                     img_clock = mhd_process.tic();
+                });
+                if (result == RTPReceiver::MAIN_HEADER) {
                     j2k_measure::tic_for({&frame_process, &pkt_process}, img_clock);
                     break;
                 }
@@ -275,7 +294,7 @@ int main(int argc, char** argv) {
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
             mhd_process.toc();
-            printf("main header read, seq: %d, time: %.6fms\n", rtp_recv.get_last_sequence_number(), mhd_process.get());
+            printf(TAG_INFO "msg=\"main header read\" frame=1 seq=%u proc_ms=%f\n", rtp_recv.get_last_sequence_number(), mhd_process.get());
         }
 #endif
         while (!sig_flag) {
@@ -311,7 +330,7 @@ int main(int argc, char** argv) {
                             const auto lost_per = static_cast<double>(frame_lost_precinct) / j2k_tile.get_total_precinct() * 100;
                             fprintf(
                                 stderr,
-                                "    analysis_frame: %ld, lost_precinct: %d/%ld, %.6lf%%\n",
+                                TAG_ERR "code=Precinct frame=%zu precinct_loss=%u/%zu prc_loss=%f\n",
                                 analysis_frame, frame_lost_precinct, j2k_tile.get_total_precinct(), lost_per
                             );
                             frame_lost_precinct = 0;
@@ -322,38 +341,73 @@ int main(int argc, char** argv) {
                         // std::this_thread::sleep_until(img_clock);
                         [[maybe_unused]] const auto jitter = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(now - img_clock).count();
 
-                        pkt_process.toc_push(now);
-
 #ifdef RTP_CLOCK_CHECK
                         if (debug_clock_it != debug_clock_it_end) *debug_clock_it = now;
                         ++debug_clock_it;
 #endif
                         if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                            frame_process.toc(now);
-                            const auto pkt_proc_ms = pkt_process.average(out_flame);
+                            auto tmp_out_frame = out_flame;
+                            j2k_measure frm_proc_copy;
+
+                            // if (unlikely(analysis_frame == 1)) {
+                            //     tmp_out_frame = 1;
+                            //     first_mhd_ftr.wait();
+                            //     auto t = pkt_process.toc_push();
+                            //     if (out_flame == 1) {
+                            //         frame_process.toc(t);
+                            //         frm_proc_copy = frame_process;
+                            //     } else {
+                            //         frm_proc_copy = frame_process;
+                            //         frm_proc_copy.toc(t);
+                            //     }
+                            // } else {
+                            //     pkt_process.toc_push(frame_process.toc(now));
+                            //     frm_proc_copy = frame_process;
+                            // }
+                            if (unlikely(analysis_frame == 1)) {
+                                first_mhd_ftr.wait();
+                                pkt_process.toc_push(frame_process.toc());
+                                out_flame = out_frame_backup - 1;
+                                out_flame = out_flame ? out_flame : 1;
+                            } else {
+                                pkt_process.toc_push(frame_process.toc(now));
+                                if (unlikely(out_flame != out_frame_backup)) {
+                                    out_flame = out_frame_backup;
+                                }
+                            }
+
+                            const auto pkt_proc_ms = pkt_process.average(tmp_out_frame);
                             pkt_process_sum += pkt_proc_ms;
-                            const auto pkt_wait_ms = pkt_wait.average(out_flame);
+                            const auto pkt_wait_ms = pkt_wait.average(tmp_out_frame);
                             pkt_wait_sum += pkt_wait_ms;
+
+                            // if (likely(analysis_frame != 1 || out_flame == 1)) {
+                            //     pkt_process_sum += pkt_proc_ms;
+                            //     pkt_wait_sum += pkt_wait_ms;
+                            // }
 
                             double out_value     = 0;
                             const char* out_unit = nullptr;
                             switch (output_format) {
                                 case OutF::FPS:
-                                    out_value = 1 / frame_process.average<std::chrono::seconds>(out_flame);
+                                    // out_value = 1 / frm_proc_copy.average<std::chrono::seconds>(tmp_out_frame);
+                                    out_value = 1 / frame_process.average<std::chrono::seconds>(tmp_out_frame);
                                     out_unit  = "fps";
                                     break;
                                 case OutF::MS:
-                                    out_value = frame_process.average(out_flame);
+                                    out_value = frame_process.average(tmp_out_frame);
                                     out_unit  = "ms";
                                     break;
                                 default:
                                     assert(false);
                             }
                             frame_process_sum += out_value;
-                            printf("frame: %ld, avg: %f %s, proc: %f ms, wait: %f ms\n", analysis_frame, out_value, out_unit, pkt_proc_ms, pkt_wait_ms);
+                            printf(TAG_LOG "frame=%zu avg_%s=%f proc_ms=%f wait_ms=%f\n", analysis_frame, out_unit, out_value, pkt_proc_ms, pkt_wait_ms);
 
-                            j2k_measure::reset_for({&frame_process, &pkt_process, &pkt_wait});
-                            j2k_measure::tic_for({&frame_process, &pkt_process}, now);
+                            if (likely(analysis_frame != 1 || out_flame == 1)) {
+                                j2k_measure::reset_for({&frame_process, &pkt_process, &pkt_wait});
+                                j2k_measure::tic_for({&frame_process, &pkt_process}, now);
+                            }
                         }
                     };
 
@@ -401,8 +455,8 @@ int main(int argc, char** argv) {
                         }
                         fprintf(
                             stderr,
-                            "  RTP error analysis_frame: %ld, lost_packet: %d, discarded_packet: %d, lost_precinct: %ld, in buf: %ld\n",
-                            analysis_frame, rtp_recv.get_lost_packet(), rtp_recv.get_last_sequence_number() - last_sequence, loss_precinct, buffer.get_num_data()
+                            TAG_ERR "code=RTP frame=%zu pkt_loss=%u pkt_discard=%u prc_loss=%zu\n",
+                            analysis_frame, rtp_recv.get_lost_packet(), rtp_recv.get_last_sequence_number() - last_sequence - rtp_recv.get_lost_packet(), loss_precinct
                         );
                         sum_lost_packet += rtp_recv.get_lost_packet();
                     } else {
@@ -413,16 +467,18 @@ int main(int argc, char** argv) {
                     }
                 } catch (buffer_leak& e) {
                     // buffer.clear();
-                    const auto in_buf = buffer.get_num_data();
-                    bool is_terminate = false;
-                    fputs(e.what(), stderr);
-                    fflush(stderr);
+                    const auto in_buf        = buffer.get_num_data();
+                    bool is_terminate        = false;
                     const size_t dest_packet = buffer.dest(
                         [&](const uint8_t* const data) { return J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length) ||
                                                                 RTPHeader_trait::get_V(data) != 0b10; },
                         [&](const uint8_t* const data) { is_terminate = RTPHeader_trait::get_V(data) != 0b10; }
                     );
-                    fprintf(stderr, ": buffer leak error analysis_frame: %ld, discarded packsts: %ld, in buf: %ld\n", analysis_frame, dest_packet, in_buf);
+                    fprintf(
+                        stderr,
+                        TAG_ERR "msg=\"%s\" code=buf_leak frame=%zu pkt_discard=%zu in_buf=%zu\n",
+                        e.what(), analysis_frame, dest_packet, in_buf
+                    );
                     ++loss_frame;
                     ++J2K_error_count;
                     table_index = 0;
@@ -435,7 +491,7 @@ int main(int argc, char** argv) {
 #endif
         analysis_finish         = clock_t::now();
         analysis_operating_time = std::chrono::duration_cast<std::chrono::milliseconds>(analysis_finish - analysis_start).count() / 1000.0;
-        printf("analysis finish\n");
+        printf(TAG_INFO "msg=\"analysis finish\"\n");
     });
 
     /***************************************************************************************************/
@@ -461,7 +517,7 @@ int main(int argc, char** argv) {
         uint32_t pre_TPSTAMP   = 0;
         uint32_t pre_flow      = 0;
 
-        printf("receive thread ready...\n");
+        printf(TAG_INFO "msg=\"receive thread ready...\"\n");
         receive_start    = clock_t::now();
         bool is_img_init = false;
         while (!sig_flag) {
@@ -474,12 +530,13 @@ int main(int argc, char** argv) {
                 const auto* pkt = buffer.get_last_packet();
                 if (J2KPayloadHeader_trait::get_MH(pkt->data + RTPHeader_trait::get_header_length())) { // EOCの有無を確認 メインヘッダで確認に変更
                     const auto tp = RTPHeader_trait::get_timestamp(pkt->data);
-                    // if (!is_img_init && pre_timestamp != 0 && tp != 0) {
-                    //     // std::unique_lock lk{img_clock_locker};
-                    //     img_inc.store(tp - pre_timestamp, std::memory_order_release);
-                    //     img_clock_cond.notify_one();
-                    //     is_img_init = true;
-                    // }
+                    if (!is_img_init && pre_timestamp != 0 && tp != 0) {
+                        // std::unique_lock lk{img_clock_locker};
+                        // img_inc.store(tp - pre_timestamp, std::memory_order_release);
+                        // img_clock_cond.notify_one();
+                        first_mhd_prm.set_value();
+                        is_img_init = true;
+                    }
                     // img_clock_cond.notify_one();
                     pre_timestamp = tp;
                 }
@@ -487,10 +544,10 @@ int main(int argc, char** argv) {
                 if (TPS != pre_TPSTAMP + 1 && TPS && pre_TPSTAMP) {
                     const auto flow = udp.get_overflow_packet();
                     if (pre_flow != flow) {
-                        fprintf(stderr, "lost packet: %d, overflow packet: %d\n", TPS - (pre_TPSTAMP + 1), flow - pre_flow);
+                        // fprintf(stderr, "lost packet: %d, overflow packet: %d\n", TPS - (pre_TPSTAMP + 1), flow - pre_flow);
                         pre_flow = flow;
                     } else {
-                        fprintf(stderr, "Loss due to transmission path, total overflow pakcet: %d\n", flow);
+                        // fprintf(stderr, "Loss due to transmission path, total overflow pakcet: %d\n", flow);
                     }
                 }
                 pre_TPSTAMP = TPS;
@@ -506,7 +563,7 @@ int main(int argc, char** argv) {
         receive_finish         = clock_t::now();
         receive_operating_time = std::chrono::duration_cast<std::chrono::milliseconds>(receive_finish - receive_start).count() / 1000.0;
         if (sig_flag) putc('\n', stdout);
-        printf("receive finish\n");
+        printf(TAG_INFO "msg=\"receive finish\"\n");
 #ifdef GENERATE_RECEIVE_PROBABILITY
         printf("receive: %ld\n", count_receive);
         printf("again:   %ld\n", count_again);
@@ -532,7 +589,7 @@ int main(int argc, char** argv) {
     }
 
     if (unlikely(is_enter)) {
-        printf("Press Enter to continue\n");
+        printf(TAG_INFO "msg=\"Press Enter to continue\"\n");
         getc(stdin);
         analysis_stoper = true;
     }
