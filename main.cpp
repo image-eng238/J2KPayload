@@ -384,6 +384,8 @@ int main(int argc, char** argv) {
                                 j2k_measure::reset_for({&frame_process, &pkt_process, &pkt_wait});
                                 j2k_measure::tic_for({&frame_process, &pkt_process}, now);
                             }
+                        } else {
+                            pkt_process.tic(now);
                         }
                     };
 
