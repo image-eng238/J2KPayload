@@ -208,19 +208,10 @@ int main(int argc, char** argv) {
     j2k_measure pkt_wait{};
     long double pkt_wait_sum = 0;
 
-    size_t out_frame_backup;
-    if (out_flame == 0) {
-        out_frame_backup = 0;
-    } else {
-        out_frame_backup = out_flame;
-        out_flame        = 1;
-    }
-
     std::atomic_bool analysis_stoper = false;
 
-    std::mutex img_clock_locker;
-    std::condition_variable img_clock_cond;
-    std::atomic_uint32_t img_inc = 0;
+    // std::atomic_uint32_t img_inc = 0; // difference timestamp value
+    clock_t::duration img_inc{};
     clock_t::time_point img_clock;
 
     std::promise<void> first_mhd_prm;
@@ -325,7 +316,6 @@ int main(int argc, char** argv) {
 #endif
                 try {
                     auto frame_update = [&]() {
-                        const auto now = clock_t::now();
                         if (frame_lost_precinct != 0) {
                             const auto lost_per = static_cast<double>(frame_lost_precinct) / j2k_tile.get_total_precinct() * 100;
                             fprintf(
@@ -337,74 +327,60 @@ int main(int argc, char** argv) {
                         }
                         ++analysis_frame;
 
-                        img_clock += to_duration(img_inc.load(std::memory_order_acquire));
-                        // std::this_thread::sleep_until(img_clock);
+                        if (analysis_frame == 1) {
+                            pkt_wait.tic(pkt_process.toc_push());
+                            first_mhd_ftr.wait();
+                            pkt_wait.toc_push(pkt_process.tic());
+                        }
+                        img_clock += img_inc;
+
+                        pkt_wait.tic(pkt_process.toc_push());
+                        std::this_thread::sleep_until(img_clock);
+                        const auto now = pkt_wait.toc_push();
+
                         [[maybe_unused]] const auto jitter = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(now - img_clock).count();
 
 #ifdef RTP_CLOCK_CHECK
                         if (debug_clock_it != debug_clock_it_end) *debug_clock_it = now;
                         ++debug_clock_it;
 #endif
-                        if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                            auto tmp_out_frame = out_flame;
+                        if (out_flame != 0 && analysis_frame % out_flame == 0 || analysis_frame == 1) {
+                            size_t tmp_out_frame;
                             j2k_measure frm_proc_copy;
 
-                            // if (unlikely(analysis_frame == 1)) {
-                            //     tmp_out_frame = 1;
-                            //     first_mhd_ftr.wait();
-                            //     auto t = pkt_process.toc_push();
-                            //     if (out_flame == 1) {
-                            //         frame_process.toc(t);
-                            //         frm_proc_copy = frame_process;
-                            //     } else {
-                            //         frm_proc_copy = frame_process;
-                            //         frm_proc_copy.toc(t);
-                            //     }
-                            // } else {
-                            //     pkt_process.toc_push(frame_process.toc(now));
-                            //     frm_proc_copy = frame_process;
-                            // }
-                            if (unlikely(analysis_frame == 1)) {
-                                first_mhd_ftr.wait();
-                                pkt_process.toc_push(frame_process.toc());
-                                out_flame = out_frame_backup - 1;
-                                out_flame = out_flame ? out_flame : 1;
+                            if (likely(analysis_frame != 1 || out_flame == 1)) {
+                                tmp_out_frame = out_flame;
+                                frame_process.toc(now);
+                                frm_proc_copy = frame_process;
                             } else {
-                                pkt_process.toc_push(frame_process.toc(now));
-                                if (unlikely(out_flame != out_frame_backup)) {
-                                    out_flame = out_frame_backup;
-                                }
+                                tmp_out_frame = 1;
+                                frm_proc_copy = frame_process;
+                                frm_proc_copy.toc(now);
                             }
 
                             const auto pkt_proc_ms = pkt_process.average(tmp_out_frame);
-                            pkt_process_sum += pkt_proc_ms;
                             const auto pkt_wait_ms = pkt_wait.average(tmp_out_frame);
-                            pkt_wait_sum += pkt_wait_ms;
-
-                            // if (likely(analysis_frame != 1 || out_flame == 1)) {
-                            //     pkt_process_sum += pkt_proc_ms;
-                            //     pkt_wait_sum += pkt_wait_ms;
-                            // }
 
                             double out_value     = 0;
                             const char* out_unit = nullptr;
                             switch (output_format) {
                                 case OutF::FPS:
-                                    // out_value = 1 / frm_proc_copy.average<std::chrono::seconds>(tmp_out_frame);
-                                    out_value = 1 / frame_process.average<std::chrono::seconds>(tmp_out_frame);
+                                    out_value = 1 / frm_proc_copy.average<std::chrono::seconds>(tmp_out_frame);
                                     out_unit  = "fps";
                                     break;
                                 case OutF::MS:
-                                    out_value = frame_process.average(tmp_out_frame);
+                                    out_value = frm_proc_copy.average(tmp_out_frame);
                                     out_unit  = "ms";
                                     break;
                                 default:
                                     assert(false);
                             }
-                            frame_process_sum += out_value;
                             printf(TAG_LOG "frame=%zu avg_%s=%f proc_ms=%f wait_ms=%f\n", analysis_frame, out_unit, out_value, pkt_proc_ms, pkt_wait_ms);
 
                             if (likely(analysis_frame != 1 || out_flame == 1)) {
+                                frame_process_sum += out_value;
+                                pkt_process_sum += pkt_proc_ms;
+                                pkt_wait_sum += pkt_wait_ms;
                                 j2k_measure::reset_for({&frame_process, &pkt_process, &pkt_wait});
                                 j2k_measure::tic_for({&frame_process, &pkt_process}, now);
                             }
@@ -531,13 +507,10 @@ int main(int argc, char** argv) {
                 if (J2KPayloadHeader_trait::get_MH(pkt->data + RTPHeader_trait::get_header_length())) { // EOCの有無を確認 メインヘッダで確認に変更
                     const auto tp = RTPHeader_trait::get_timestamp(pkt->data);
                     if (!is_img_init && pre_timestamp != 0 && tp != 0) {
-                        // std::unique_lock lk{img_clock_locker};
-                        // img_inc.store(tp - pre_timestamp, std::memory_order_release);
-                        // img_clock_cond.notify_one();
+                        img_inc = to_duration(tp - pre_timestamp);
                         first_mhd_prm.set_value();
                         is_img_init = true;
                     }
-                    // img_clock_cond.notify_one();
                     pre_timestamp = tp;
                 }
                 const auto TPS = J2KPayloadHeader_trait::get_extended_sequence_number(pkt->data);
@@ -553,13 +526,12 @@ int main(int argc, char** argv) {
                 pre_TPSTAMP = TPS;
             } else if (result == leaky_bucket_buf::AGAIN) {
             } else if (result == leaky_bucket_buf::SIGNAL) {
-                img_clock_cond.notify_one();
                 break;
             } else if (likely(result == leaky_bucket_buf::FINISH)) {
-                img_clock_cond.notify_one();
                 break;
             }
         }
+        if (!is_img_init) { first_mhd_prm.set_value(); }
         receive_finish         = clock_t::now();
         receive_operating_time = std::chrono::duration_cast<std::chrono::milliseconds>(receive_finish - receive_start).count() / 1000.0;
         if (sig_flag) putc('\n', stdout);
