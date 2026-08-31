@@ -176,6 +176,7 @@ int main(int argc, char** argv) {
                 }
                 case opts(opt_err::no_argument): {
                     std::cerr << "'" << args.get_last_parse() << "' requires an argument" << std::endl;
+                    exit(1);
                 }
                 default:
                     std::cerr << "'" << args.get_last_parse() << "' is unknown argument" << std::endl;
