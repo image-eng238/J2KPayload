@@ -391,9 +391,16 @@ int main(int argc, char** argv) {
                     };
 
                     last_sequence = rtp_recv.get_last_sequence_number();
-                    pkt_wait.tic(pkt_process.toc_push());
-                    const auto recv_result = rtp_recv.load_body_packet();
-                    pkt_wait.toc_push(pkt_process.tic());
+
+                    // pkt_wait.tic(pkt_process.toc_push());
+                    // const auto recv_result = rtp_recv.load_body_packet();
+                    // pkt_wait.toc_push(pkt_process.tic());
+
+                    const auto recv_result = rtp_recv.load_body_packet(
+                        [&]() { pkt_wait.tic(pkt_process.toc_push()); },
+                        [&]() { pkt_wait.toc_push(pkt_process.tic()); }
+                    );
+
                     if (likely(recv_result == RTPReceiver::SUCCESS)) { // 正常受信
                         J2kBuf buf(&rtp_recv);
                         PID = rtp_recv.get_PID();
