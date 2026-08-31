@@ -296,22 +296,28 @@ int main(int argc, char** argv) {
             auto& j2k_packet_table = j2k_tile.acs_table();
             {
                 static bool first_mhd = false;
-                int32_t result        = 0;
+                int result            = 0;
+                j2k_measure mhd_process{};
+                clock_t::time_point now{};
                 while (true) {
-                    result = rtp_recv.load_main_packet();
+                    result = rtp_recv.load_main_packet([&](const packet_t&) {
+                        now = mhd_process.tic();
+                    });
                     if (result == RTPReceiver::MAIN_HEADER) { break; }
                     if (result == RTPReceiver::FINISH) { return; }
                 }
-                if (!first_mhd) {
-                    img_clock = clock_t::now();
-                    frame_process.tic(img_clock);
-                    first_mhd = true;
-                }
-                pkt_process.tic();
                 J2kBuf buf(&rtp_recv);
                 main_header.read(buf);
                 j2k_tile.init(main_header, buf);
-                // printf("main header read, seq: %d\n", rtp_recv.get_last_sequence_number());
+                if (!first_mhd) {
+                    mhd_process.toc();
+                    printf(TAG_INFO "msg=\"main header read\" frame=1 seq=%u proc_ms=%f\n", rtp_recv.get_last_sequence_number(), mhd_process.get());
+                    img_clock = now;
+                    j2k_measure::tic_for({&frame_process, &pkt_process}, now);
+                    first_mhd = true;
+                } else {
+                    pkt_process.tic(now);
+                }
             }
             while (!sig_flag)
 #endif
