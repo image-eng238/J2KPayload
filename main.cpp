@@ -72,7 +72,8 @@ int main(int argc, char** argv) {
     OutF output_format       = OutF::FPS;
     using clock_t            = std::chrono::high_resolution_clock;
     size_t prealloc_precinct = 0;
-    size_t frame_delay       = 0;
+    int frame_delay          = 0;
+    bool frame_delay_flag    = false;
 
 #ifdef RTP_CLOCK_CHECK
     size_t clock_check_size = 120;
@@ -87,7 +88,7 @@ int main(int argc, char** argv) {
             optspec_t{'c', "receive_affinity", true, "CPU affinity of the receive thread"},
             optspec_t{'C', "analysis_affinity", true, "CPU affinity of the analysis thread"},
             optspec_t{'b', "BufferLength", true, "Receive buffer length, default: 13600, max: 13600"},
-            optspec_t{0, "Delay", true, "Playback delay, default: 0"},
+            optspec_t{'d', "Delay", true, "Playback delay, default: 0"},
             optspec_t{0, "Precinct", true, "Number of precinct's to be allocated in advance"},
             optspec_t{0, "Enter", false, "analysis thread continue at enter"},
             optspec_t{0, "OutputFormat", true, "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
@@ -143,8 +144,13 @@ int main(int argc, char** argv) {
                         }
                     }
                 } break;
-                case opts("Delay"):
-                    frame_delay = args.get_value<size_t>().value_or(0);
+                case opts('d'):
+                    if (args.get_str() == "Enter") {
+                        frame_delay = -1;
+                    } else {
+                        frame_delay = args.get_value<int>().value_or(0);
+                    }
+                    frame_delay_flag = frame_delay != 0;
                     break;
                 case opts("Precinct"):
                     prealloc_precinct = args.get_value<size_t>().value_or(0);
@@ -215,6 +221,8 @@ int main(int argc, char** argv) {
     long double pkt_wait_sum = 0;
 
     std::atomic_bool analysis_stoper = false;
+    std::promise<void> frame_delay_prm;
+    auto frame_delay_ftr = frame_delay_prm.get_future();
 
     // std::atomic_uint32_t img_inc = 0; // difference timestamp value
     clock_t::duration img_inc{};
@@ -266,6 +274,10 @@ int main(int argc, char** argv) {
         if (unlikely(is_enter)) {
             while (!analysis_stoper);
         }
+        if (frame_delay_flag) {
+            frame_delay_ftr.wait();
+        }
+
         printf(TAG_INFO "msg=\"analysis thread ready...\"\n");
         analysis_start = clock_t::now();
 
@@ -357,6 +369,7 @@ int main(int argc, char** argv) {
                         ++debug_clock_it;
 #endif
                         if (out_flame != 0 && analysis_frame % out_flame == 0 || analysis_frame == 1) {
+                            const size_t buf_pending = buffer.get_num_data();
                             size_t tmp_out_frame;
                             j2k_measure frm_proc_copy;
 
@@ -387,7 +400,7 @@ int main(int argc, char** argv) {
                                 default:
                                     assert(false);
                             }
-                            printf(TAG_LOG "frame=%zu avg_%s=%f proc_ms=%f wait_ms=%f\n", analysis_frame, out_unit, out_value, pkt_proc_ms, pkt_wait_ms);
+                            printf(TAG_LOG "frame=%zu avg_%s=%f proc_ms=%f wait_ms=%f buf_pnd=%zu\n", analysis_frame, out_unit, out_value, pkt_proc_ms, pkt_wait_ms, buf_pending);
 
                             if (likely(analysis_frame != 1 || out_flame == 1)) {
                                 frame_process_sum += out_value;
@@ -473,7 +486,7 @@ int main(int argc, char** argv) {
                     );
                     fprintf(
                         stderr,
-                        TAG_ERR "msg=\"%s\" code=buf_leak frame=%zu pkt_discard=%zu in_buf=%zu\n",
+                        TAG_ERR "msg=\"%s\" code=buf_leak frame=%zu pkt_discard=%zu buf_pnd=%zu\n",
                         e.what(), analysis_frame, dest_packet, in_buf
                     );
                     ++loss_frame;
@@ -528,12 +541,13 @@ int main(int argc, char** argv) {
                 if (J2KPayloadHeader_trait::get_MH(pkt->data + RTPHeader_trait::get_header_length())) { // EOCの有無を確認 メインヘッダで確認に変更
                     const auto tp = RTPHeader_trait::get_timestamp(pkt->data);
                     if (!is_img_init && pre_timestamp != 0 && tp != 0) {
-                        if (frame_delay == 0) {
+                        if (frame_delay <= 0) {
                             img_inc = to_duration(tp - pre_timestamp);
                             first_mhd_prm.set_value();
                             is_img_init = true;
                         } else {
                             --frame_delay;
+                            if (frame_delay == 0) { frame_delay_prm.set_value(); }
                         }
                     }
                     pre_timestamp = tp;
@@ -589,6 +603,11 @@ int main(int argc, char** argv) {
         printf(TAG_INFO "msg=\"Press Enter to continue\"\n");
         getc(stdin);
         analysis_stoper = true;
+    }
+    if (frame_delay == -1) {
+        printf(TAG_INFO "msg=\"Press Enter to continue\"\n");
+        getc(stdin);
+        frame_delay_prm.set_value();
     }
 
     analysis_thread.join();
