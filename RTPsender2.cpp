@@ -76,6 +76,7 @@ int main(int argc, char** argv) {
     size_t fps_overwrite  = SIZE_MAX;
     size_t number_of_loop = 1;
     bool is_enter_opt     = false;
+    bool send_terminate   = false;
 
     std::chrono::steady_clock::duration interval{};
 
@@ -88,6 +89,7 @@ int main(int argc, char** argv) {
             optspec_t{'i', "interval", true, "Packet transmission interval (microseconds)"},
             optspec_t{'f', "frame_rate", true, "Overwrite the frame fate. default: values in the rtp file"},
             optspec_t{'l', "loop", true, "Number of loops"},
+            optspec_t{'e', "terninate", false, "send a termination packet. if '-r' is not specified, only termination packet will be sent"},
             optspec_t{0, "Enter", false, "Send with Enter key"},
             optspec_t{'h', "help", false, "Show this"}
         );
@@ -121,6 +123,9 @@ int main(int argc, char** argv) {
                 case opts('l'):
                     if (auto tmp = args.get_value<size_t>(); tmp) number_of_loop = tmp.value();
                     break;
+                case opts('e'):
+                    send_terminate = true;
+                    break;
                 case opts("Enter"):
                     is_enter_opt = true;
                     break;
@@ -145,10 +150,15 @@ int main(int argc, char** argv) {
         }
     }
 
+    packet_sender udp{addr, port};
+    if (rtp_path.empty() || send_terminate) {
+        uint8_t buf = 0;
+        udp.send({&buf, 1});
+        exit(0);
+    }
     RTP_file rtpfile{rtp_path.data()};
     cli_parser cli{is_enter_opt};
     packet_os pktos{rtpfile.front()};
-    packet_sender udp{addr, port};
 
     const size_t packet_in_frame = [&] {
         size_t n = 0;
@@ -307,6 +317,10 @@ RestartTheLoop:
     }
 EndTheLoop:
 
+    if (send_terminate) {
+        uint8_t buf = 0;
+        udp.send({&buf, 1});
+    }
     udp.print_result();
 
     return 0;
