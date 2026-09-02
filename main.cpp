@@ -28,6 +28,8 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 
 #include "argument.hpp"
 
+#include "measure.hpp"
+
 #include <vector>
 #include <string_view>
 #include <charconv>
@@ -38,6 +40,13 @@ UDP受信用のバッファには未使用スレッドのバッファを割り�
 #include <pthread.h>
 
 #include <csignal>
+#include <cinttypes>
+#include <future>
+
+#define TAG_INFO "INFO "
+#define TAG_ERR "ERR "
+#define TAG_LOG ""
+#define TAG_SUMMARY "SUMMARY "
 
 constexpr size_t MAX_PACKET_SIZE = 1384;
 sig_atomic_t sig_flag            = 0;
@@ -55,8 +64,6 @@ int main(int argc, char** argv) {
     CPU_ZERO(&affinity_analysis);
     constexpr size_t MAX_BUFFER_LENGTH = 1360 * 10;
     size_t buffer_length               = MAX_BUFFER_LENGTH;
-    double rf_r                        = 0.5;
-    double rf_a                        = 0.25;
     bool is_enter                      = false;
     enum class OutF : uint8_t {
         FPS,
@@ -65,6 +72,8 @@ int main(int argc, char** argv) {
     OutF output_format       = OutF::FPS;
     using clock_t            = std::chrono::high_resolution_clock;
     size_t prealloc_precinct = 0;
+    int frame_delay          = 0;
+    bool frame_delay_flag    = false;
 
 #ifdef RTP_CLOCK_CHECK
     size_t clock_check_size = 120;
@@ -79,8 +88,8 @@ int main(int argc, char** argv) {
             optspec_t{'c', "receive_affinity", true, "CPU affinity of the receive thread"},
             optspec_t{'C', "analysis_affinity", true, "CPU affinity of the analysis thread"},
             optspec_t{'b', "BufferLength", true, "Receive buffer length, default: 13600, max: 13600"},
+            optspec_t{'d', "Delay", true, "Playback delay, default: 0"},
             optspec_t{0, "Precinct", true, "Number of precinct's to be allocated in advance"},
-            optspec_t{0, "ReceiveFrequency", true, "The multiplier for the receiving thread frequency (90kHz). Fromat: \"receive:again\",default: 0.5:0.25"},
             optspec_t{0, "Enter", false, "analysis thread continue at enter"},
             optspec_t{0, "OutputFormat", true, "this option is determines the output format for the frame rate. value: fps or ms, default: fps"},
 #ifdef RTP_CLOCK_CHECK
@@ -135,14 +144,16 @@ int main(int argc, char** argv) {
                         }
                     }
                 } break;
+                case opts('d'):
+                    if (args.get_str() == "Enter") {
+                        frame_delay = -1;
+                    } else {
+                        frame_delay = args.get_value<int>().value_or(0);
+                    }
+                    frame_delay_flag = frame_delay != 0;
+                    break;
                 case opts("Precinct"):
                     prealloc_precinct = args.get_value<size_t>().value_or(0);
-                    break;
-                case opts("ReceiveFrequency"):
-                    if (auto tmp = args.get_interval<double>(':'); tmp) {
-                        rf_r = tmp->first;
-                        rf_a = tmp->last;
-                    }
                     break;
                 case opts("Enter"):
                     is_enter = true;
@@ -190,25 +201,35 @@ int main(int argc, char** argv) {
     leaky_bucket_buf buffer(&udp, packet_buffer, buffer_length);
     RTPReceiver rtp_recv(&buffer);
 
-    clock_t::time_point avg_frame;
     size_t analysis_frame          = 0;
     size_t loss_frame              = 0;
-    size_t interpolate_frame       = 0;
     uint32_t frame_lost_precinct   = 0;
     size_t RTP_error_count         = 0;
     size_t J2K_error_count         = 0;
     size_t error_counts[3]         = {};
-    long double sum_avg            = 0;
     size_t sum_lost_packet         = 0;
     double analysis_operating_time = 0;
     double receive_operating_time  = 0;
 
-    std::atomic_bool analysis_stoper = false;
+    j2k_measure frame_process{};
+    long double frame_process_sum = 0;
 
-    std::mutex img_clock_locker;
-    std::condition_variable img_clock_cond;
-    std::atomic_uint32_t img_inc = 0;
+    j2k_measure pkt_process{};
+    long double pkt_process_sum = 0;
+
+    j2k_measure pkt_wait{};
+    long double pkt_wait_sum = 0;
+
+    std::atomic_bool analysis_stoper = false;
+    std::promise<void> frame_delay_prm;
+    auto frame_delay_ftr = frame_delay_prm.get_future();
+
+    // std::atomic_uint32_t img_inc = 0; // difference timestamp value
+    clock_t::duration img_inc{};
     clock_t::time_point img_clock;
+
+    std::promise<void> first_mhd_prm;
+    std::future<void> first_mhd_ftr = first_mhd_prm.get_future();
 
     auto to_duration = [](const auto t) constexpr { return std::chrono::duration_cast<clock_t::duration>(std::chrono::duration<double>{t * (1.0 / J2KPayloadHeader_trait::media_clock_Hz)}); };
 
@@ -253,7 +274,11 @@ int main(int argc, char** argv) {
         if (unlikely(is_enter)) {
             while (!analysis_stoper);
         }
-        printf("analysis thread ready...\n");
+        if (frame_delay_flag) {
+            frame_delay_ftr.wait();
+        }
+
+        printf(TAG_INFO "msg=\"analysis thread ready...\"\n");
         analysis_start = clock_t::now();
 
 #ifndef DISABLE_TABLE
@@ -262,47 +287,54 @@ int main(int argc, char** argv) {
         j2k_tile.move_resource(std::move(prealloc));
         auto& j2k_packet_table = j2k_tile.acs_table();
         {
-            int32_t result = 0;
-            std::chrono::high_resolution_clock::time_point t;
+            int result = 0;
+            j2k_measure mhd_process{};
             while (true) {
-                result = rtp_recv.load_main_packet();
+                result = rtp_recv.load_main_packet([&](const packet_t&) {
+                    img_clock = mhd_process.tic();
+                });
                 if (result == RTPReceiver::MAIN_HEADER) {
-                    t = std::chrono::high_resolution_clock::now();
+                    j2k_measure::tic_for({&frame_process, &pkt_process}, img_clock);
                     break;
                 }
                 if (result == RTPReceiver::FINISH) { return; }
             }
-            // avg_frame = clock_t::now();
             J2kBuf buf(&rtp_recv);
             main_header.read(buf);
             j2k_tile.init(main_header, buf);
-            auto r = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - t);
-            printf("main header read, seq: %d, time: %ldns\n", rtp_recv.get_last_sequence_number(), r.count());
+            mhd_process.toc();
+            printf(TAG_INFO "msg=\"main header read\" frame=1 seq=%u proc_ms=%f\n", rtp_recv.get_last_sequence_number(), mhd_process.get());
         }
 #endif
-        if (likely(!is_enter)) {
-            std::unique_lock lk{img_clock_locker};
-            img_clock_cond.wait(lk);
-        }
-        img_clock = clock_t::now();
-        avg_frame = img_clock;
         while (!sig_flag) {
 #ifdef DISABLE_TABLE
             MainHeader main_header;
             j2k_Tile j2k_tile;
             auto& j2k_packet_table = j2k_tile.acs_table();
             {
-                int32_t result = 0;
+                static bool first_mhd = false;
+                int result            = 0;
+                j2k_measure mhd_process{};
+                clock_t::time_point now{};
                 while (true) {
-                    result = rtp_recv.load_main_packet();
+                    result = rtp_recv.load_main_packet([&](const packet_t&) {
+                        now = mhd_process.tic();
+                    });
                     if (result == RTPReceiver::MAIN_HEADER) { break; }
                     if (result == RTPReceiver::FINISH) { return; }
                 }
-                avg_frame = clock_t::now();
                 J2kBuf buf(&rtp_recv);
                 main_header.read(buf);
                 j2k_tile.init(main_header, buf);
-                // printf("main header read, seq: %d\n", rtp_recv.get_last_sequence_number());
+                if (!first_mhd) {
+                    mhd_process.toc();
+                    printf(TAG_INFO "msg=\"main header read\" frame=1 seq=%u proc_ms=%f\n", rtp_recv.get_last_sequence_number(), mhd_process.get());
+                    img_clock = now;
+                    j2k_measure::tic_for({&frame_process, &pkt_process}, now);
+                    first_mhd = true;
+                } else {
+                    pkt_process.tic(now);
+                }
             }
             while (!sig_flag)
 #endif
@@ -312,42 +344,87 @@ int main(int argc, char** argv) {
                             const auto lost_per = static_cast<double>(frame_lost_precinct) / j2k_tile.get_total_precinct() * 100;
                             fprintf(
                                 stderr,
-                                "    analysis_frame: %ld, lost_precinct: %d/%ld, %.6lf%%\n",
+                                TAG_ERR "code=Precinct frame=%zu precinct_loss=%u/%zu prc_loss=%f\n",
                                 analysis_frame, frame_lost_precinct, j2k_tile.get_total_precinct(), lost_per
                             );
                             frame_lost_precinct = 0;
                         }
                         ++analysis_frame;
 
-                        img_clock += to_duration(img_inc.load(std::memory_order_acquire));
+                        if (analysis_frame == 1) {
+                            pkt_wait.tic(pkt_process.toc_push());
+                            first_mhd_ftr.wait();
+                            pkt_wait.toc_push(pkt_process.tic());
+                        }
+                        img_clock += img_inc;
+
+                        pkt_wait.tic(pkt_process.toc_push());
                         std::this_thread::sleep_until(img_clock);
-                        const auto now                     = clock_t::now();
+                        const auto now = pkt_wait.toc_push();
+
                         [[maybe_unused]] const auto jitter = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(now - img_clock).count();
+
 #ifdef RTP_CLOCK_CHECK
                         if (debug_clock_it != debug_clock_it_end) *debug_clock_it = now;
                         ++debug_clock_it;
 #endif
-                        if (out_flame != 0 && analysis_frame % out_flame == 0) {
-                            auto avg = std::chrono::duration_cast<std::chrono::microseconds>(now - avg_frame);
-                            if (output_format == OutF::FPS) {
-                                const auto avg_fps = 1 / ((static_cast<double>(avg.count()) / 1000) / out_flame) * 1000;
-                                sum_avg += avg_fps;
-                                // printf("analysis_frame: %ld, avg: %.6f fps\n", analysis_frame, avg_fps);
-                                printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld\n", analysis_frame, avg_fps, buffer.get_num_data());
-                                // printf("analysis_frame: %ld, avg: %.6f fps, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_fps, buffer.get_num_data(), jitter);
-                            } else if (output_format == OutF::MS) {
-                                const auto avg_ms = (static_cast<double>(avg.count()) / out_flame) / 1000;
-                                sum_avg += avg_ms;
-                                // printf("analysis_frame: %ld, avg: %.6f ms\n", analysis_frame, avg_ms);
-                                printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld\n", analysis_frame, avg_ms, buffer.get_num_data());
-                                // printf("analysis_frame: %ld, avg: %.6f ms, in buf: %ld, sleep jitter: %lf ms\n", analysis_frame, avg_ms, buffer.get_num_data(), jitter);
+                        if (out_flame != 0 && analysis_frame % out_flame == 0 || analysis_frame == 1) {
+                            const size_t buf_pending = buffer.get_num_data();
+                            size_t tmp_out_frame;
+                            j2k_measure frm_proc_copy;
+
+                            if (likely(analysis_frame != 1 || out_flame == 1)) {
+                                tmp_out_frame = out_flame;
+                                frame_process.toc(now);
+                                frm_proc_copy = frame_process;
+                            } else {
+                                tmp_out_frame = 1;
+                                frm_proc_copy = frame_process;
+                                frm_proc_copy.toc(now);
                             }
-                            avg_frame = now;
+
+                            const auto pkt_proc_ms = pkt_process.average(tmp_out_frame);
+                            const auto pkt_wait_ms = pkt_wait.average(tmp_out_frame);
+
+                            double out_value     = 0;
+                            const char* out_unit = nullptr;
+                            switch (output_format) {
+                                case OutF::FPS:
+                                    out_value = 1 / frm_proc_copy.average<std::chrono::seconds>(tmp_out_frame);
+                                    out_unit  = "fps";
+                                    break;
+                                case OutF::MS:
+                                    out_value = frm_proc_copy.average(tmp_out_frame);
+                                    out_unit  = "ms";
+                                    break;
+                                default:
+                                    assert(false);
+                            }
+                            printf(TAG_LOG "frame=%zu avg_%s=%f proc_ms=%f wait_ms=%f buf_pnd=%zu\n", analysis_frame, out_unit, out_value, pkt_proc_ms, pkt_wait_ms, buf_pending);
+
+                            if (likely(analysis_frame != 1 || out_flame == 1)) {
+                                frame_process_sum += out_value;
+                                pkt_process_sum += pkt_proc_ms;
+                                pkt_wait_sum += pkt_wait_ms;
+                                j2k_measure::reset_for({&frame_process, &pkt_process, &pkt_wait});
+                                j2k_measure::tic_for({&frame_process, &pkt_process}, now);
+                            }
+                        } else {
+                            pkt_process.tic(now);
                         }
                     };
 
-                    last_sequence          = rtp_recv.get_last_sequence_number();
-                    const auto recv_result = rtp_recv.load_body_packet();
+                    last_sequence = rtp_recv.get_last_sequence_number();
+
+                    // pkt_wait.tic(pkt_process.toc_push());
+                    // const auto recv_result = rtp_recv.load_body_packet();
+                    // pkt_wait.toc_push(pkt_process.tic());
+
+                    const auto recv_result = rtp_recv.load_body_packet(
+                        [&]() { pkt_wait.tic(pkt_process.toc_push()); },
+                        [&]() { pkt_wait.toc_push(pkt_process.tic()); }
+                    );
+
                     if (likely(recv_result == RTPReceiver::SUCCESS)) { // 正常受信
                         J2kBuf buf(&rtp_recv);
                         PID = rtp_recv.get_PID();
@@ -366,24 +443,7 @@ int main(int argc, char** argv) {
 #endif
                         }
                     } else if (recv_result == RTPReceiver::MAIN_HEADER) { // メインパケット出現
-                        const auto in_buf = buffer.get_num_data();
-                        if (in_buf > 1360 * 3) {
-                            buffer.dest(
-                                [&](const uint8_t* data) { return RTPHeader_trait::get_M(data); },
-                                [&](const uint8_t* data) { rtp_recv.set_last_sequence_number(J2KPayloadHeader_trait::get_extended_sequence_number(data)); }
-                            );
-                            rtp_recv.terminate();
-                            const auto post_in_buf = buffer.get_num_data();
-                            fprintf(stderr, "  frame discarded by clockskew analysis_frame: %ld, in buf: %ld -> %ld\n", analysis_frame, in_buf, post_in_buf);
-                            ++loss_frame;
-                        } else if (in_buf < size_t(1360 * 0.75)) {
-                            const auto in_buf = buffer.get_num_data();
-                            frame_update();
-                            rtp_recv.terminate();
-                            const auto post_in_buf = buffer.get_num_data();
-                            fprintf(stderr, "  frame interpolation by clockskew analysis_frame: %ld, in buf: %ld -> %ld\n", analysis_frame, in_buf, post_in_buf);
-                            ++interpolate_frame;
-                        }
+                        pkt_process.tic();
                     } else if (recv_result == RTPReceiver::FAILURE) { // パケットロス
                         PID                  = rtp_recv.get_PID();
                         size_t loss_precinct = 0;
@@ -405,8 +465,8 @@ int main(int argc, char** argv) {
                         }
                         fprintf(
                             stderr,
-                            "  RTP error analysis_frame: %ld, lost_packet: %d, discarded_packet: %d, lost_precinct: %ld, in buf: %ld\n",
-                            analysis_frame, rtp_recv.get_lost_packet(), rtp_recv.get_last_sequence_number() - last_sequence, loss_precinct, buffer.get_num_data()
+                            TAG_ERR "code=RTP frame=%zu pkt_loss=%u pkt_discard=%u prc_loss=%zu\n",
+                            analysis_frame, rtp_recv.get_lost_packet(), rtp_recv.get_last_sequence_number() - last_sequence - rtp_recv.get_lost_packet(), loss_precinct
                         );
                         sum_lost_packet += rtp_recv.get_lost_packet();
                     } else {
@@ -415,19 +475,20 @@ int main(int argc, char** argv) {
 #endif
                         break;
                     }
-
                 } catch (buffer_leak& e) {
                     // buffer.clear();
-                    const auto in_buf = buffer.get_num_data();
-                    bool is_terminate = false;
-                    fputs(e.what(), stderr);
-                    fflush(stderr);
+                    const auto in_buf        = buffer.get_num_data();
+                    bool is_terminate        = false;
                     const size_t dest_packet = buffer.dest(
                         [&](const uint8_t* const data) { return J2KPayloadHeader_trait::get_MH(data + RTPHeader_trait::length) ||
                                                                 RTPHeader_trait::get_V(data) != 0b10; },
                         [&](const uint8_t* const data) { is_terminate = RTPHeader_trait::get_V(data) != 0b10; }
                     );
-                    fprintf(stderr, ": buffer leak error analysis_frame: %ld, discarded packsts: %ld, in buf: %ld\n", analysis_frame, dest_packet, in_buf);
+                    fprintf(
+                        stderr,
+                        TAG_ERR "msg=\"%s\" code=buf_leak frame=%zu pkt_discard=%zu buf_pnd=%zu\n",
+                        e.what(), analysis_frame, dest_packet, in_buf
+                    );
                     ++loss_frame;
                     ++J2K_error_count;
                     table_index = 0;
@@ -440,7 +501,7 @@ int main(int argc, char** argv) {
 #endif
         analysis_finish         = clock_t::now();
         analysis_operating_time = std::chrono::duration_cast<std::chrono::milliseconds>(analysis_finish - analysis_start).count() / 1000.0;
-        printf("analysis finish\n");
+        printf(TAG_INFO "msg=\"analysis finish\"\n");
     });
 
     /***************************************************************************************************/
@@ -465,12 +526,9 @@ int main(int argc, char** argv) {
         uint32_t pre_timestamp = 0;
         uint32_t pre_TPSTAMP   = 0;
         uint32_t pre_flow      = 0;
-        const auto pkt_inc_r   = to_duration(rf_r);
-        const auto pkt_inc_a   = to_duration(rf_a);
 
-        printf("receive thread ready...\n");
+        printf(TAG_INFO "msg=\"receive thread ready...\"\n");
         receive_start    = clock_t::now();
-        auto packet_abs  = receive_start;
         bool is_img_init = false;
         while (!sig_flag) {
             const auto result = buffer.receive();
@@ -483,44 +541,40 @@ int main(int argc, char** argv) {
                 if (J2KPayloadHeader_trait::get_MH(pkt->data + RTPHeader_trait::get_header_length())) { // EOCの有無を確認 メインヘッダで確認に変更
                     const auto tp = RTPHeader_trait::get_timestamp(pkt->data);
                     if (!is_img_init && pre_timestamp != 0 && tp != 0) {
-                        // std::unique_lock lk{img_clock_locker};
-                        img_inc.store(tp - pre_timestamp, std::memory_order_release);
-                        img_clock_cond.notify_one();
-                        is_img_init = true;
+                        if (frame_delay <= 0) {
+                            img_inc = to_duration(tp - pre_timestamp);
+                            first_mhd_prm.set_value();
+                            is_img_init = true;
+                        } else {
+                            --frame_delay;
+                            if (frame_delay == 0) { frame_delay_prm.set_value(); }
+                        }
                     }
-                    // img_clock_cond.notify_one();
                     pre_timestamp = tp;
                 }
                 const auto TPS = J2KPayloadHeader_trait::get_extended_sequence_number(pkt->data);
                 if (TPS != pre_TPSTAMP + 1 && TPS && pre_TPSTAMP) {
                     const auto flow = udp.get_overflow_packet();
                     if (pre_flow != flow) {
-                        fprintf(stderr, "lost packet: %d, overflow packet: %d\n", TPS - (pre_TPSTAMP + 1), flow - pre_flow);
+                        // fprintf(stderr, "lost packet: %d, overflow packet: %d\n", TPS - (pre_TPSTAMP + 1), flow - pre_flow);
                         pre_flow = flow;
                     } else {
-                        fprintf(stderr, "Loss due to transmission path, total overflow pakcet: %d\n", flow);
+                        // fprintf(stderr, "Loss due to transmission path, total overflow pakcet: %d\n", flow);
                     }
                 }
                 pre_TPSTAMP = TPS;
-                // メディアクロックとPTSTAMPをもとに待機時間を算出
-                // packet_abs += pkt_inc_r;
-                // std::this_thread::sleep_until(packet_abs);
             } else if (result == leaky_bucket_buf::AGAIN) {
-                // false: メディアクロックの 1/4 で待機
-                // packet_abs += pkt_inc_a;
-                // std::this_thread::sleep_until(packet_abs);
             } else if (result == leaky_bucket_buf::SIGNAL) {
-                img_clock_cond.notify_one();
                 break;
             } else if (likely(result == leaky_bucket_buf::FINISH)) {
-                img_clock_cond.notify_one();
                 break;
             }
         }
+        if (!is_img_init) { first_mhd_prm.set_value(); }
         receive_finish         = clock_t::now();
         receive_operating_time = std::chrono::duration_cast<std::chrono::milliseconds>(receive_finish - receive_start).count() / 1000.0;
         if (sig_flag) putc('\n', stdout);
-        printf("receive finish\n");
+        printf(TAG_INFO "msg=\"receive finish\"\n");
 #ifdef GENERATE_RECEIVE_PROBABILITY
         printf("receive: %ld\n", count_receive);
         printf("again:   %ld\n", count_again);
@@ -544,25 +598,16 @@ int main(int argc, char** argv) {
             exit(1);
         }
     }
-    // sched_param sched;
-    // sched.sched_priority = 80;
-    // if (CPU_COUNT(&affinity) != 0) {
-    //     if (pthread_setschedparam(receive_thread.native_handle(), SCHED_FIFO, &sched) != 0) {
-    //         perror("pthread_setschedparams");
-    //         exit(1);
-    //     }
-    // }
-    // if (CPU_COUNT(&affinity_analysis) != 0) {
-    //     if (pthread_setschedparam(analysis_thread.native_handle(), SCHED_FIFO, &sched) != 0) {
-    //         perror("pthread_setschedparam");
-    //         exit(1);
-    //     }
-    // }
 
     if (unlikely(is_enter)) {
-        printf("Press Enter to continue\n");
+        printf(TAG_INFO "msg=\"Press Enter to continue\"\n");
         getc(stdin);
         analysis_stoper = true;
+    }
+    if (frame_delay == -1) {
+        printf(TAG_INFO "msg=\"Press Enter to continue\"\n");
+        getc(stdin);
+        frame_delay_prm.set_value();
     }
 
     analysis_thread.join();
@@ -575,12 +620,12 @@ int main(int argc, char** argv) {
     printf("analysis thread's operating time: %lfs\n", analysis_operating_time);
     printf("receive thread's operating time: %lfs\n", receive_operating_time);
     if (output_format == OutF::FPS) {
-        printf("average fps: %Lffps\n", sum_avg / (analysis_frame / out_flame));
+        printf("average fps: %Lffps\n", frame_process_sum / (analysis_frame / out_flame));
     } else {
-        printf("average fps: %Lfms\n", sum_avg / (analysis_frame / out_flame));
+        printf("average fps: %Lfms\n", frame_process_sum / (analysis_frame / out_flame));
     }
+    printf("process: %Lf ms, wait: %Lf ms\n", pkt_process_sum / (analysis_frame / out_flame), pkt_wait_sum / (analysis_frame / out_flame));
     printf("analysis frame: %ld\n", analysis_frame);
-    printf("interpolate  frame: %ld\n", interpolate_frame);
     printf("lost frame: %ld\n", loss_frame);
     printf("lost packets: %ld/%ld\n", sum_lost_packet, analysis_frame * 1360);
     printf("packet loss rate: %lf%%\n", (sum_lost_packet / (analysis_frame * 1360.0)) * 100);

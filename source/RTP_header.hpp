@@ -386,8 +386,115 @@ public:
     int32_t check();
     void pop(uint8_t*&, size_t&);
 
-    int load_main_packet(packet_t* const copy_main_pkt = nullptr);
+    template <typename Callback = void(const packet_t&)>
+    int load_main_packet(Callback callback = [](const packet_t&) -> void {}) {
+        using namespace RTPHeader_trait;
+        using namespace J2KPayloadHeader_trait;
+        const auto hd = RTPHeader_trait::get_header_length();
+        packet_t pkt;
+
+        while (true) {
+
+            pkt = buffer->pop();
+            if (unlikely(pkt.size() == 1 && RTPHeader_trait::get_V(pkt.data()) != 0b10)) return this->FINISH;
+
+            const auto current_sequence = get_extended_sequence_number(pkt.data());
+            const auto pre_sequence     = pre_sequence_number;
+            pre_sequence_number         = current_sequence;
+
+            if (get_MH(pkt.data() + hd)) { // メインヘッダ出現
+                assert(j2k_packets.empty());
+                j2k_packets.push_back(parse_rtp_header(pkt, MAIN_PACKET));
+                callback(j2k_packets.back());
+                continue;
+            } else {
+                if (get_body_ORDB(pkt.data() + hd)) { // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
+                    j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_HEAD));
+                    j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_TAIL));
+                    PID = get_body_PID(pkt.data() + hd);
+                    pos = 0;
+                    return this->MAIN_HEADER;
+                }
+            }
+        }
+    }
+
     int load_body_packet();
+    template <typename Pre, typename Post>
+    int load_body_packet(Pre blocking_pre, Post blocking_post) {
+        using namespace RTPHeader_trait;
+        using namespace J2KPayloadHeader_trait;
+        const auto hd = RTPHeader_trait::get_header_length();
+
+        if (!j2k_packets.empty()) {
+            j2k_packets.erase(j2k_packets.begin(), j2k_packets.end() - 1);
+        }
+
+        packet_t pkt;
+
+        while (true) {
+
+            blocking_pre();
+            pkt = buffer->pop();
+            blocking_post();
+            if (unlikely(pkt.size() == 1 && RTPHeader_trait::get_V(pkt.data()) != 0b10)) return this->FINISH;
+
+            const auto current_sequence = get_extended_sequence_number(pkt.data());
+            const auto pre_sequence     = pre_sequence_number;
+            pre_sequence_number         = current_sequence;
+
+            if (likely(check_rtp_sequence(pre_sequence, current_sequence))) {
+                if (unlikely(get_MH(pkt.data() + hd))) { // メインヘッダ出現
+                    assert(j2k_packets.empty());
+                    j2k_packets.push_back(parse_rtp_header(pkt, MAIN_PACKET));
+                    return MAIN_HEADER;
+                }
+
+                if (get_body_ORDB(pkt.data() + hd)) { // 再同期ポイントが出現した場合 J2K パケットの解析が可能に
+                    j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_HEAD));
+                    j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_TAIL));
+                    pos = 0;
+                    if (unlikely(get_M(pkt.data()))) {
+                        is_EOC = true;
+                        PID    = 0;
+                    } else {
+                        PID = get_body_PID(pkt.data() + hd);
+                    }
+                    return this->SUCCESS;
+                } else {
+                    j2k_packets.push_back(parse_rtp_header(pkt, BODY_NO_RESYNC));
+                    if (unlikely(get_M(pkt.data()))) {
+                        is_EOC = true;
+                        PID    = 0;
+                        pos    = 0;
+                        return this->SUCCESS;
+                    }
+                }
+            } else {
+                // fprintf(stderr, "pre: %d, seq: %d, diff: %d\n", pre_sequence, current_sequence, current_sequence - pre_sequence);
+                // パケットロス発生 次の再同期ポイントまでパケットを破棄
+                terminate();
+                if (unlikely(current_sequence == 0)) {
+                    num_lost_packet = ex_sequence_max - pre_sequence;
+                } else {
+                    num_lost_packet = current_sequence - (pre_sequence + 1);
+                    if (num_lost_packet >= buffer->get_buffer_length()) { throw buffer_leak{"RTP seq", buffer_leak::ANALYSISING}; }
+                }
+                while (true) {
+                    blocking_pre();
+                    pkt = buffer->pop();
+                    blocking_post();
+                    if (unlikely(pkt.size() == 1 && RTPHeader_trait::get_V(pkt.data()) != 0b10)) return this->FINISH;
+                    if (!get_MH(pkt.data() + hd) && get_body_ORDB(pkt.data() + hd)) {
+                        pre_sequence_number = get_extended_sequence_number(pkt.data());
+                        PID                 = get_body_PID(pkt.data() + hd);
+                        j2k_packets.push_back(parse_rtp_header(pkt, BODY_RESYNC_TAIL));
+                        return this->FAILURE;
+                    }
+                }
+            }
+        }
+    }
     packet_t pop();
     void terminate() {
         pos    = 0;
