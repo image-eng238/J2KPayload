@@ -152,8 +152,7 @@ int main(int argc, char** argv) {
 
     packet_sender udp{addr, port};
     if (rtp_path.empty() || send_terminate) {
-        uint8_t buf = 0;
-        udp.send({&buf, 1});
+        udp.send_terminate();
         exit(0);
     }
     RTP_file rtpfile{rtp_path.data()};
@@ -272,8 +271,9 @@ RestartTheLoop:
                         udp.set_sleep_v();
                         goto RestartTheLoop;
                     case 'E': {
-                        uint8_t buf = 0;
-                        udp.send({&buf, 1});
+                        // uint8_t buf = 0;
+                        // udp.send({&buf, 1});
+                        udp.send_terminate();
                         goto EndTheLoop;
                     }
                     case 'h': { // help
@@ -318,8 +318,7 @@ RestartTheLoop:
 EndTheLoop:
 
     if (send_terminate) {
-        uint8_t buf = 0;
-        udp.send({&buf, 1});
+        udp.send_terminate();
     }
     udp.print_result();
 

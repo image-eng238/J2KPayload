@@ -217,6 +217,13 @@ public:
         }
         return true;
     }
+    bool send_terminate(uint8_t data = 0) {
+        if (udp.send(&data, 1) == -1) {
+            perror("sendto");
+            return false;
+        }
+        return true;
+    }
 
     void set_ignore(size_t n) { ignore_count = n; }
     void set_clock(size_t t) {
