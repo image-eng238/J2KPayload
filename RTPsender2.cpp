@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
     }
 
     packet_sender udp{addr, port};
-    if (rtp_path.empty() || send_terminate) {
+    if (rtp_path.empty() && send_terminate) {
         udp.send_terminate();
         exit(0);
     }
