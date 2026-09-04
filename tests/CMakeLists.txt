@@ -8,3 +8,6 @@ add_executable(test_decoding_unit ./src/decoding_unit.cpp)
 target_link_libraries(test_decoding_unit CodeStream Decoding_unit LeakyBucket RTP_header)
 
 add_executable(test_measure ./src/measure.cpp)
+
+add_executable(test_UDP ./src/UDP.cc)
+target_link_libraries(test_UDP UDP)

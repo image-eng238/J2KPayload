@@ -43,14 +43,17 @@ add_executable(filep file_parse.cpp)
 # target_compile_definitions(Decoding PUBLIC -DGENERATE_LOG)
 target_link_libraries(filep CodeStream Decoding_unit LeakyBucket RTP_header)
 
-add_executable(RTPsender RTPsender.cpp)
+# add_executable(RTPsender RTPsender.cpp)
+# target_link_libraries(RTPsender RTP_header)
+
 add_executable(RTPsender2 RTPsender2.cpp)
+target_link_libraries(RTPsender2 RTP_header)
 
-add_executable(stop_j2kpay stop_j2kpay.cpp)
+# add_executable(stop_j2kpay stop_j2kpay.cpp)
 
-add_executable(sender_test sender_test.cpp)
+# add_executable(sender_test sender_test.cpp)
 
-add_executable(UDPtest UDPtest.cpp)
+# add_executable(UDPtest UDPtest.cpp)
 
 add_executable(RTP_show RTP_show.cpp)
 
