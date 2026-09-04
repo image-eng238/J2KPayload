@@ -92,6 +92,7 @@ private:
 namespace J2KPayloadHeader_trait {
     constexpr uint8_t length           = 8;
     constexpr size_t media_clock_Hz    = 90'000;
+    constexpr size_t media_clock_kHz   = 90;
     constexpr uint32_t ex_sequence_max = 0xFFFFFF;
 
     // geter
