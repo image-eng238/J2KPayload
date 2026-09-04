@@ -46,7 +46,7 @@ int main() {
         j2k_stats<int> stats_test;
         stats_test.add_sample_for(data);
         assert(n == stats_test.sample_size());
-        assert(avg == stats_test.avarage());
+        assert(avg == stats_test.average());
         assert(*std::min_element(std::begin(data), std::end(data)) == stats_test.minimum());
         assert(*std::max_element(std::begin(data), std::end(data)) == stats_test.maximum());
         auto stddev_2 = stats_test.stddev();

@@ -108,10 +108,11 @@ public:
         add_sample_for(std::begin(container), std::end(container));
     }
 
-    constexpr double avarage() const { return mean; }
+    constexpr double average() const { return mean; }
     constexpr sample_type maximum() const { return max; }
     constexpr sample_type minimum() const { return min; }
     constexpr size_t sample_size() const { return n; }
     constexpr double stddev() const { return std::sqrt(variance()); }
     constexpr double variance() const { return M2 / n; }
+    constexpr bool zero_variance() const { return minimum() == maximum(); }
 };
